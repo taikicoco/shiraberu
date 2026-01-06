@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PR Log - shiraberu</title>
+    <style>
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f7f6f3;
+            --text-primary: #37352f;
+            --text-secondary: #787774;
+            --text-tertiary: #9b9a97;
+            --border-color: #e9e9e7;
+            --accent-green: #0f7b6c;
+            --accent-purple: #6940a5;
+            --accent-blue: #0b6e99;
+            --accent-gray: #787774;
+            --accent-red: #e03e3e;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            line-height: 1.5;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 3rem 2rem;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+        }
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+            letter-spacing: -0.02em;
+        }
+        .meta {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-bottom: 2.5rem;
+        }
+        .day {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border-color);
+        }
+        .day-header {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1.25rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        .category {
+            margin-bottom: 1.25rem;
+        }
+        .category:last-child {
+            margin-bottom: 0;
+        }
+        .category-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.625rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .category-title::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+        }
+        .category-title.opened { color: var(--accent-green); }
+        .category-title.opened::before { background: var(--accent-green); }
+        .category-title.draft { color: var(--accent-gray); }
+        .category-title.draft::before { background: var(--accent-gray); }
+        .category-title.merged { color: var(--accent-purple); }
+        .category-title.merged::before { background: var(--accent-purple); }
+        .category-title.reviewed { color: var(--accent-blue); }
+        .category-title.reviewed::before { background: var(--accent-blue); }
+        .pr-list {
+            list-style: none;
+        }
+        .pr-item {
+            padding: 0.625rem 0.75rem;
+            margin: 0 -0.75rem;
+            border-radius: 6px;
+            transition: background-color 0.15s ease;
+        }
+        .pr-item:hover {
+            background: var(--bg-secondary);
+        }
+        .pr-link {
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9375rem;
+        }
+        .pr-link:hover {
+            color: var(--accent-blue);
+        }
+        .pr-meta {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.625rem;
+            flex-wrap: wrap;
+        }
+        .pr-repo {
+            color: var(--text-tertiary);
+        }
+        .state {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .state-open { background: rgba(15, 123, 108, 0.1); color: var(--accent-green); }
+        .state-merged { background: rgba(105, 64, 165, 0.1); color: var(--accent-purple); }
+        .state-closed { background: rgba(224, 62, 62, 0.1); color: var(--accent-red); }
+        .state-draft { background: rgba(120, 119, 116, 0.1); color: var(--accent-gray); }
+        .pr-stats {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+        }
+        .stat-add { color: var(--accent-green); }
+        .stat-del { color: var(--accent-red); }
+        .stat-comments {
+            color: var(--text-secondary);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.125rem;
+        }
+        .empty {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-secondary);
+            background: var(--bg-primary);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+        .summary {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .summary-item {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            min-width: 100px;
+            flex: 1;
+        }
+        .summary-value {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+        }
+        .summary-value.opened { color: var(--accent-green); }
+        .summary-value.draft { color: var(--accent-gray); }
+        .summary-value.merged { color: var(--accent-purple); }
+        .summary-value.reviewed { color: var(--accent-blue); }
+        .summary-value.changes { font-size: 1.125rem; color: var(--text-primary); }
+        .summary-label {
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+    </style>
+</head>
+<body>
+    <h1>PR Log</h1>
+    <div class="meta">
+        {{.PeriodLabel}} · {{.Report.Org}} · {{.Report.GeneratedAt.Format "2006-01-02 15:04"}}
+    </div>
+
+    {{if .Report.Days}}
+    <div class="summary">
+        <div class="summary-item">
+            <span class="summary-value opened">{{.Summary.OpenedCount}}</span>
+            <span class="summary-label">Opened</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-value draft">{{.Summary.DraftCount}}</span>
+            <span class="summary-label">Draft</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-value merged">{{.Summary.MergedCount}}</span>
+            <span class="summary-label">Merged</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-value reviewed">{{.Summary.ReviewedCount}}</span>
+            <span class="summary-label">Reviewed</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-value changes"><span class="stat-add">+{{.Summary.Additions}}</span> <span class="stat-del">−{{.Summary.Deletions}}</span></span>
+            <span class="summary-label">Changes</span>
+        </div>
+    </div>
+    {{end}}
+
+    {{if not .Report.Days}}
+    <div class="empty">該当するPRはありませんでした</div>
+    {{else}}
+    {{range .Report.Days}}
+    <div class="day">
+        <div class="day-header">
+            {{.Date.Format "2006-01-02"}} ({{index $.Weekdays .Date.Weekday}})
+        </div>
+
+        {{if .Opened}}
+        <div class="category">
+            <div class="category-title opened">Opened</div>
+            <ul class="pr-list">
+                {{range .Opened}}
+                <li class="pr-item">
+                    <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
+                    <div class="pr-meta">
+                        <span class="pr-repo">{{.Repository}}</span>
+                        <span class="state state-open">Open</span>
+                        <span class="pr-stats">
+                            <span class="stat-add">+{{.Additions}}</span>
+                            <span class="stat-del">−{{.Deletions}}</span>
+                            {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
+                        </span>
+                    </div>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+        {{end}}
+
+        {{if .Draft}}
+        <div class="category">
+            <div class="category-title draft">Draft</div>
+            <ul class="pr-list">
+                {{range .Draft}}
+                <li class="pr-item">
+                    <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
+                    <div class="pr-meta">
+                        <span class="pr-repo">{{.Repository}}</span>
+                        <span class="state state-draft">Draft</span>
+                        <span class="pr-stats">
+                            <span class="stat-add">+{{.Additions}}</span>
+                            <span class="stat-del">−{{.Deletions}}</span>
+                            {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
+                        </span>
+                    </div>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+        {{end}}
+
+        {{if .Merged}}
+        <div class="category">
+            <div class="category-title merged">Merged</div>
+            <ul class="pr-list">
+                {{range .Merged}}
+                <li class="pr-item">
+                    <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
+                    <div class="pr-meta">
+                        <span class="pr-repo">{{.Repository}}</span>
+                        <span class="state state-merged">Merged</span>
+                        <span class="pr-stats">
+                            <span class="stat-add">+{{.Additions}}</span>
+                            <span class="stat-del">−{{.Deletions}}</span>
+                            {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
+                        </span>
+                    </div>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+        {{end}}
+
+        {{if .Reviewed}}
+        <div class="category">
+            <div class="category-title reviewed">Reviewed</div>
+            <ul class="pr-list">
+                {{range .Reviewed}}
+                <li class="pr-item">
+                    <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
+                    <div class="pr-meta">
+                        <span class="pr-repo">{{.Repository}}</span>
+                        {{if .IsDraft}}
+                        <span class="state state-draft">Draft</span>
+                        {{else if eq .State "merged"}}
+                        <span class="state state-merged">Merged</span>
+                        {{else if eq .State "open"}}
+                        <span class="state state-open">Open</span>
+                        {{else}}
+                        <span class="state state-closed">Closed</span>
+                        {{end}}
+                        <span class="pr-stats">
+                            <span class="stat-add">+{{.Additions}}</span>
+                            <span class="stat-del">−{{.Deletions}}</span>
+                            {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
+                        </span>
+                    </div>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+    {{end}}
+</body>
+</html>
