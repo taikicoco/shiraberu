@@ -32,11 +32,14 @@ func NewFetcher(client *github.Client) *Fetcher {
 }
 
 func (f *Fetcher) Fetch(org string, startDate, endDate time.Time) (*Report, error) {
-	startStr := startDate.Format("2006-01-02")
-	endStr := endDate.Format("2006-01-02")
 	username := f.client.Username()
 
-	dateRange := startStr + ".." + endStr
+	// 日本時間で日付範囲を指定（GitHub APIはISO 8601形式でタイムゾーンを認識）
+	jst := time.FixedZone("JST", 9*60*60)
+	startTime := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, jst)
+	endTime := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 0, jst)
+
+	dateRange := startTime.Format(time.RFC3339) + ".." + endTime.Format(time.RFC3339)
 
 	// オープンしたPR: 作成日で絞り込み
 	openedPRs, err := f.client.SearchPRs(org, "is:pr author:"+username+" is:open", "created:"+dateRange)
@@ -69,6 +72,7 @@ func (f *Fetcher) Fetch(org string, startDate, endDate time.Time) (*Report, erro
 
 func groupByDate(opened, merged, reviewed []github.PullRequest) []DailyPRs {
 	dateMap := make(map[string]*DailyPRs)
+	jst := time.FixedZone("JST", 9*60*60)
 
 	addPR := func(pr github.PullRequest, category string) {
 		date := pr.CreatedAt
@@ -79,10 +83,12 @@ func groupByDate(opened, merged, reviewed []github.PullRequest) []DailyPRs {
 			date = pr.UpdatedAt
 		}
 
-		dateStr := date.Format("2006-01-02")
+		// UTCからJSTに変換してからグループ化
+		dateJST := date.In(jst)
+		dateStr := dateJST.Format("2006-01-02")
 		if _, ok := dateMap[dateStr]; !ok {
 			dateMap[dateStr] = &DailyPRs{
-				Date: time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location()),
+				Date: time.Date(dateJST.Year(), dateJST.Month(), dateJST.Day(), 0, 0, 0, 0, jst),
 			}
 		}
 
