@@ -1,4 +1,4 @@
-package html
+package render
 
 import (
 	"embed"
@@ -108,7 +108,7 @@ func RenderHTML(w io.Writer, report *pr.Report, previousReport *pr.Report) error
 		WeeklyStats:  weeklyStats,
 		MonthlyStats: monthlyStats,
 		RepoStats:    repoStats,
-		Weekdays:     []string{"日", "月", "火", "水", "木", "金", "土"},
+		Weekdays:     []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
 		PeriodLabel:  formatPeriod(report.StartDate, report.EndDate),
 	}
 	return htmlTemplate.ExecuteTemplate(w, "report.html", data)
@@ -138,8 +138,26 @@ func calcSummary(report *pr.Report) Summary {
 }
 
 func calcDailyStats(report *pr.Report) []DailyStat {
-	stats := make([]DailyStat, 0, len(report.Days))
+	// 期間内の全日を含むマップを作成
+	dayMap := make(map[string]*DailyStat)
+
+	// まず期間内の全日を0で初期化
+	for d := report.StartDate; !d.After(report.EndDate); d = d.AddDate(0, 0, 1) {
+		dateStr := d.Format("2006-01-02")
+		dayMap[dateStr] = &DailyStat{
+			Date: dateStr,
+		}
+	}
+
+	// PRがある日のデータを埋める
 	for _, day := range report.Days {
+		dateStr := day.Date.Format("2006-01-02")
+		stat, ok := dayMap[dateStr]
+		if !ok {
+			stat = &DailyStat{Date: dateStr}
+			dayMap[dateStr] = stat
+		}
+
 		var additions, deletions int
 		for _, p := range day.Opened {
 			additions += p.Additions
@@ -153,17 +171,20 @@ func calcDailyStats(report *pr.Report) []DailyStat {
 			additions += p.Additions
 			deletions += p.Deletions
 		}
-		totalPRs := len(day.Opened) + len(day.Draft) + len(day.Merged) + len(day.Reviewed)
-		stats = append(stats, DailyStat{
-			Date:          day.Date.Format("2006-01-02"),
-			OpenedCount:   len(day.Opened),
-			DraftCount:    len(day.Draft),
-			MergedCount:   len(day.Merged),
-			ReviewedCount: len(day.Reviewed),
-			Additions:     additions,
-			Deletions:     deletions,
-			TotalPRs:      totalPRs,
-		})
+
+		stat.OpenedCount = len(day.Opened)
+		stat.DraftCount = len(day.Draft)
+		stat.MergedCount = len(day.Merged)
+		stat.ReviewedCount = len(day.Reviewed)
+		stat.Additions = additions
+		stat.Deletions = deletions
+		stat.TotalPRs = len(day.Opened) + len(day.Draft) + len(day.Merged) + len(day.Reviewed)
+	}
+
+	// スライスに変換
+	stats := make([]DailyStat, 0, len(dayMap))
+	for _, stat := range dayMap {
+		stats = append(stats, *stat)
 	}
 
 	// グラフ用に日付昇順（左=過去、右=最新）にソート
@@ -224,7 +245,8 @@ func calcWeeklyStats(report *pr.Report) []WeeklyStat {
 			if day.Date.Weekday() == 0 { // Sunday
 				weekStart = day.Date.AddDate(0, 0, -6)
 			}
-			weekLabel := fmt.Sprintf("%d/%d週", weekStart.Month(), weekStart.Day())
+			weekEnd := weekStart.AddDate(0, 0, 6) // Sunday
+			weekLabel := fmt.Sprintf("%d/%d 〜 %d/%d", weekStart.Month(), weekStart.Day(), weekEnd.Month(), weekEnd.Day())
 			weekMap[weekKey] = &weekData{
 				stat:      &WeeklyStat{Week: weekLabel},
 				startDate: weekKey,
@@ -256,7 +278,7 @@ func calcMonthlyStats(report *pr.Report) []MonthlyStat {
 
 	for _, day := range report.Days {
 		monthKey := day.Date.Format("2006-01")
-		monthLabel := fmt.Sprintf("%d月", day.Date.Month())
+		monthLabel := day.Date.Format("Jan")
 
 		if _, ok := monthMap[monthKey]; !ok {
 			monthMap[monthKey] = &MonthlyStat{Month: monthLabel}

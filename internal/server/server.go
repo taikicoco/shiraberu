@@ -4,17 +4,31 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"time"
 
-	"github.com/taikicoco/shiraberu/internal/html"
 	"github.com/taikicoco/shiraberu/internal/pr"
+	"github.com/taikicoco/shiraberu/internal/render"
 )
 
+const DefaultPort = "7777"
+
+// openBrowserFunc is a variable for mocking openBrowser in tests
+var openBrowserFunc = openBrowserDefault
+
 func Serve(report *pr.Report, previousReport *pr.Report) error {
+	port := os.Getenv("SHIRABERU_PORT")
+	if port == "" {
+		port = DefaultPort
+	}
+	return ServeWithAddr(report, previousReport, ":"+port)
+}
+
+func ServeWithAddr(report *pr.Report, previousReport *pr.Report, addr string) error {
 	var buf bytes.Buffer
-	if err := html.RenderHTML(&buf, report, previousReport); err != nil {
+	if err := render.RenderHTML(&buf, report, previousReport); err != nil {
 		return err
 	}
 	content := buf.Bytes()
@@ -26,22 +40,22 @@ func Serve(report *pr.Report, previousReport *pr.Report) error {
 	})
 
 	server := &http.Server{
-		Addr:    ":7777",
+		Addr:    addr,
 		Handler: mux,
 	}
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		openBrowser("http://localhost:7777")
+		openBrowserFunc("http://localhost" + addr)
 	}()
 
-	fmt.Println("✓ ブラウザで開きます: http://localhost:7777")
-	fmt.Println("サーバーを停止するには Ctrl+C を押してください")
+	fmt.Println("✓ Opening in browser: http://localhost" + addr)
+	fmt.Println("Press Ctrl+C to stop the server")
 
 	return server.ListenAndServe()
 }
 
-func openBrowser(url string) {
+func openBrowserDefault(url string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":

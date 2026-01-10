@@ -16,11 +16,3 @@ type PullRequest struct {
 	ChangedFiles int
 	Comments     int
 }
-
-type PRCategory string
-
-const (
-	CategoryOpened   PRCategory = "opened"
-	CategoryMerged   PRCategory = "merged"
-	CategoryReviewed PRCategory = "reviewed"
-)
