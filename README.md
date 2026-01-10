@@ -21,7 +21,7 @@ A CLI tool to track and report your GitHub PR contributions within an organizati
 
 ## Requirements
 
-- Go 1.21+
+- Go 1.24+
 - [GitHub CLI](https://cli.github.com/) (`gh`) - authenticated
 
 ## Installation
