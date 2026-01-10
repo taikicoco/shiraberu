@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manifoldco/promptui"
 	"github.com/taikicoco/shiraberu/internal/config"
 )
 
@@ -48,7 +49,7 @@ func Run(cfg *config.Config) (*Options, error) {
 			break
 		}
 	}
-	idx := promptSelect(reader, "出力形式を選択してください", formats, defaultIdx)
+	idx := promptSelect("出力形式を選択してください", formats, defaultIdx)
 	opts.Format = formatValues[idx]
 
 	// Output path (auto-generate if output_dir is set)
@@ -74,7 +75,7 @@ func generateFilename(start, end time.Time, ext string) string {
 func promptPeriod(reader *bufio.Reader) (time.Time, time.Time, error) {
 	// 1日 or 範囲
 	modes := []string{"1日だけ", "範囲で指定"}
-	modeIdx := promptSelect(reader, "期間の指定方法", modes, 0)
+	modeIdx := promptSelect("期間の指定方法", modes, 0)
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -96,7 +97,7 @@ func promptSingleDay(reader *bufio.Reader, today time.Time) (time.Time, time.Tim
 		fmt.Sprintf("昨日 (%s)", yesterday.Format("2006-01-02")),
 		"日付を入力",
 	}
-	idx := promptSelect(reader, "日付を選択", options, 0)
+	idx := promptSelect("日付を選択", options, 0)
 
 	var date time.Time
 	switch idx {
@@ -137,7 +138,7 @@ func promptDateRange(reader *bufio.Reader, today time.Time) (time.Time, time.Tim
 		"過去N日",
 		"日付を入力",
 	}
-	idx := promptSelect(reader, "範囲を選択", options, 0)
+	idx := promptSelect("範囲を選択", options, 0)
 
 	var start, end time.Time
 	switch idx {
@@ -218,27 +219,22 @@ func promptText(reader *bufio.Reader, label string, defaultVal string) string {
 	return input
 }
 
-func promptSelect(reader *bufio.Reader, label string, options []string, defaultIdx int) int {
-	fmt.Printf("? %s:\n", label)
-	for i, opt := range options {
-		marker := "  "
-		if i == defaultIdx {
-			marker = "> "
-		}
-		fmt.Printf("  %s%d. %s\n", marker, i+1, opt)
+func promptSelect(label string, options []string, defaultIdx int) int {
+	prompt := promptui.Select{
+		Label:     label,
+		Items:     options,
+		CursorPos: defaultIdx,
+		Templates: &promptui.SelectTemplates{
+			Label:    "? {{ . }}",
+			Active:   "\U0001F449 {{ . | cyan }}",
+			Inactive: "   {{ . }}",
+			Selected: "\U00002705 {{ . | green }}",
+		},
 	}
-	fmt.Printf("番号を入力 [%d]: ", defaultIdx+1)
 
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(input)
-
-	if input == "" {
+	idx, _, err := prompt.Run()
+	if err != nil {
 		return defaultIdx
 	}
-
-	idx, err := strconv.Atoi(input)
-	if err != nil || idx < 1 || idx > len(options) {
-		return defaultIdx
-	}
-	return idx - 1
+	return idx
 }

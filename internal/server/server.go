@@ -12,9 +12,9 @@ import (
 	"github.com/taikicoco/shiraberu/internal/pr"
 )
 
-func Serve(report *pr.Report) error {
+func Serve(report *pr.Report, previousReport *pr.Report) error {
 	var buf bytes.Buffer
-	if err := html.RenderHTML(&buf, report); err != nil {
+	if err := html.RenderHTML(&buf, report, previousReport); err != nil {
 		return err
 	}
 	content := buf.Bytes()

@@ -1,11 +1,14 @@
-.PHONY: build run fmt lint fix clean
+.PHONY: build run demo fmt lint fix clean
 
 # Build
 build:
-	go build -o shiraberu ./cmd/shiraberu
+	go build -o shiraberu .
 
 run:
-	go run ./cmd/shiraberu
+	go run .
+
+demo:
+	go run . --demo
 
 # Format
 fmt:

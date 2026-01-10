@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PR Log - shiraberu</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         :root {
             --bg-primary: #ffffff;
@@ -40,26 +41,165 @@
             font-size: 0.875rem;
             margin-bottom: 2.5rem;
         }
+        .summary {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .summary-item {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            min-width: 100px;
+            flex: 1;
+        }
+        .summary-value {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+        }
+        .summary-value.opened { color: var(--accent-green); }
+        .summary-value.draft { color: var(--accent-gray); }
+        .summary-value.merged { color: var(--accent-purple); }
+        .summary-value.reviewed { color: var(--accent-blue); }
+        .summary-value.changes { font-size: 1.125rem; color: var(--text-primary); }
+        .summary-label {
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .summary-diff {
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-top: 0.25rem;
+        }
+        .summary-diff.positive { color: var(--accent-green); }
+        .summary-diff.negative { color: var(--accent-red); }
+        .summary-diff.neutral { color: var(--text-tertiary); }
+        /* Charts Section */
+        .charts-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .chart-container {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .chart-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .chart-tabs {
+            display: flex;
+            gap: 0.25rem;
+        }
+        .chart-tab {
+            background: none;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.6875rem;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .chart-tab:hover {
+            color: var(--text-primary);
+        }
+        .chart-tab.active {
+            background: var(--text-primary);
+            border-color: var(--text-primary);
+            color: var(--bg-primary);
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 220px;
+        }
+        /* Toggle Controls */
+        .toggle-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .toggle-btn {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .toggle-btn:hover {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+        /* Day Details */
         .day {
             background: var(--bg-primary);
             border-radius: 12px;
-            padding: 1.5rem 2rem;
-            margin-bottom: 1rem;
+            margin-bottom: 0.5rem;
             border: 1px solid var(--border-color);
+        }
+        .day > summary {
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            user-select: none;
+        }
+        .day > summary::-webkit-details-marker {
+            display: none;
+        }
+        .day > summary::before {
+            content: "";
+            width: 0;
+            height: 0;
+            border-left: 5px solid var(--text-tertiary);
+            border-top: 4px solid transparent;
+            border-bottom: 4px solid transparent;
+            transition: transform 0.2s ease;
+        }
+        .day[open] > summary::before {
+            transform: rotate(90deg);
         }
         .day-header {
             font-size: 1rem;
             font-weight: 600;
-            margin-bottom: 1.25rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 1px solid var(--border-color);
             color: var(--text-primary);
+            flex: 1;
+        }
+        .day-count {
+            font-size: 0.8125rem;
+            color: var(--text-tertiary);
+        }
+        .day-content {
+            padding: 0 1.5rem 1.5rem;
+            border-top: 1px solid var(--border-color);
         }
         .category {
-            margin-bottom: 1.25rem;
+            margin-top: 1.25rem;
         }
-        .category:last-child {
-            margin-bottom: 0;
+        .category:first-child {
+            margin-top: 1rem;
         }
         .category-title {
             font-size: 0.75rem;
@@ -155,61 +295,50 @@
             border-radius: 12px;
             border: 1px solid var(--border-color);
         }
-        .summary {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-        }
-        .summary-item {
-            background: var(--bg-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 1rem 1.25rem;
-            min-width: 100px;
-            flex: 1;
-        }
-        .summary-value {
-            display: block;
-            font-size: 1.5rem;
-            font-weight: 700;
-            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-        }
-        .summary-value.opened { color: var(--accent-green); }
-        .summary-value.draft { color: var(--accent-gray); }
-        .summary-value.merged { color: var(--accent-purple); }
-        .summary-value.reviewed { color: var(--accent-blue); }
-        .summary-value.changes { font-size: 1.125rem; color: var(--text-primary); }
-        .summary-label {
-            font-size: 0.75rem;
-            color: var(--text-tertiary);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
     </style>
 </head>
 <body>
     <h1>PR Log</h1>
     <div class="meta">
-        {{.PeriodLabel}} · {{.Report.Org}} · {{.Report.GeneratedAt.Format "2006-01-02 15:04"}}
+        {{.PeriodLabel}} · {{.Report.Org}}
     </div>
 
     {{if .Report.Days}}
     <div class="summary">
         <div class="summary-item">
             <span class="summary-value opened">{{.Summary.OpenedCount}}</span>
+            {{if .SummaryDiff.HasPrevious}}
+            <span class="summary-diff {{if gt .SummaryDiff.OpenedDiff 0}}positive{{else if lt .SummaryDiff.OpenedDiff 0}}negative{{else}}neutral{{end}}">
+                {{if gt .SummaryDiff.OpenedDiff 0}}↑ +{{.SummaryDiff.OpenedDiff}}{{else if lt .SummaryDiff.OpenedDiff 0}}↓ {{.SummaryDiff.OpenedDiff}}{{else}}→ 0{{end}}
+            </span>
+            {{end}}
             <span class="summary-label">Opened</span>
         </div>
         <div class="summary-item">
             <span class="summary-value draft">{{.Summary.DraftCount}}</span>
+            {{if .SummaryDiff.HasPrevious}}
+            <span class="summary-diff {{if gt .SummaryDiff.DraftDiff 0}}positive{{else if lt .SummaryDiff.DraftDiff 0}}negative{{else}}neutral{{end}}">
+                {{if gt .SummaryDiff.DraftDiff 0}}↑ +{{.SummaryDiff.DraftDiff}}{{else if lt .SummaryDiff.DraftDiff 0}}↓ {{.SummaryDiff.DraftDiff}}{{else}}→ 0{{end}}
+            </span>
+            {{end}}
             <span class="summary-label">Draft</span>
         </div>
         <div class="summary-item">
             <span class="summary-value merged">{{.Summary.MergedCount}}</span>
+            {{if .SummaryDiff.HasPrevious}}
+            <span class="summary-diff {{if gt .SummaryDiff.MergedDiff 0}}positive{{else if lt .SummaryDiff.MergedDiff 0}}negative{{else}}neutral{{end}}">
+                {{if gt .SummaryDiff.MergedDiff 0}}↑ +{{.SummaryDiff.MergedDiff}}{{else if lt .SummaryDiff.MergedDiff 0}}↓ {{.SummaryDiff.MergedDiff}}{{else}}→ 0{{end}}
+            </span>
+            {{end}}
             <span class="summary-label">Merged</span>
         </div>
         <div class="summary-item">
             <span class="summary-value reviewed">{{.Summary.ReviewedCount}}</span>
+            {{if .SummaryDiff.HasPrevious}}
+            <span class="summary-diff {{if gt .SummaryDiff.ReviewedDiff 0}}positive{{else if lt .SummaryDiff.ReviewedDiff 0}}negative{{else}}neutral{{end}}">
+                {{if gt .SummaryDiff.ReviewedDiff 0}}↑ +{{.SummaryDiff.ReviewedDiff}}{{else if lt .SummaryDiff.ReviewedDiff 0}}↓ {{.SummaryDiff.ReviewedDiff}}{{else}}→ 0{{end}}
+            </span>
+            {{end}}
             <span class="summary-label">Reviewed</span>
         </div>
         <div class="summary-item">
@@ -217,114 +346,262 @@
             <span class="summary-label">Changes</span>
         </div>
     </div>
+
+    {{if gt (len .DailyStats) 1}}
+    <div class="charts-section">
+        <div class="chart-container">
+            <div class="chart-header">
+                <div class="chart-title">Activity</div>
+                {{if or (gt (len .WeeklyStats) 1) (gt (len .MonthlyStats) 1)}}
+                <div class="chart-tabs">
+                    <button class="chart-tab active" data-period="daily">日別</button>
+                    {{if gt (len .WeeklyStats) 1}}<button class="chart-tab" data-period="weekly">週別</button>{{end}}
+                    {{if gt (len .MonthlyStats) 1}}<button class="chart-tab" data-period="monthly">月別</button>{{end}}
+                </div>
+                {{end}}
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="activityChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-container">
+            <div class="chart-header">
+                <div class="chart-title">Repository Activity</div>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="repoActivityChart"></canvas>
+            </div>
+        </div>
+    </div>
+    {{end}}
+
+    <div class="toggle-controls">
+        <button class="toggle-btn" onclick="toggleAll(true)">すべて開く</button>
+        <button class="toggle-btn" onclick="toggleAll(false)">すべて閉じる</button>
+    </div>
     {{end}}
 
     {{if not .Report.Days}}
     <div class="empty">該当するPRはありませんでした</div>
     {{else}}
-    {{range .Report.Days}}
-    <div class="day">
-        <div class="day-header">
-            {{.Date.Format "2006-01-02"}} ({{index $.Weekdays .Date.Weekday}})
-        </div>
+    {{range $index, $day := .Report.Days}}
+    {{$totalPRs := len .Opened | add (len .Draft) | add (len .Merged) | add (len .Reviewed)}}
+    <details class="day">
+        <summary>
+            <span class="day-header">{{.Date.Format "2006-01-02"}} ({{index $.Weekdays .Date.Weekday}})</span>
+            <span class="day-count">{{$totalPRs}} PRs</span>
+        </summary>
+        <div class="day-content">
+            {{if .Opened}}
+            <div class="category">
+                <div class="category-title opened">Opened</div>
+                <ul class="pr-list">
+                    {{range .Opened}}
+                    <li class="pr-item">
+                        <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
+                        <div class="pr-meta">
+                            <span class="pr-repo">{{.Repository}}</span>
+                            <span class="state state-open">Open</span>
+                            <span class="pr-stats">
+                                <span class="stat-add">+{{.Additions}}</span>
+                                <span class="stat-del">−{{.Deletions}}</span>
+                                {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
+                            </span>
+                        </div>
+                    </li>
+                    {{end}}
+                </ul>
+            </div>
+            {{end}}
 
-        {{if .Opened}}
-        <div class="category">
-            <div class="category-title opened">Opened</div>
-            <ul class="pr-list">
-                {{range .Opened}}
-                <li class="pr-item">
-                    <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
-                    <div class="pr-meta">
-                        <span class="pr-repo">{{.Repository}}</span>
-                        <span class="state state-open">Open</span>
-                        <span class="pr-stats">
-                            <span class="stat-add">+{{.Additions}}</span>
-                            <span class="stat-del">−{{.Deletions}}</span>
-                            {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
-                        </span>
-                    </div>
-                </li>
-                {{end}}
-            </ul>
-        </div>
-        {{end}}
+            {{if .Draft}}
+            <div class="category">
+                <div class="category-title draft">Draft</div>
+                <ul class="pr-list">
+                    {{range .Draft}}
+                    <li class="pr-item">
+                        <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
+                        <div class="pr-meta">
+                            <span class="pr-repo">{{.Repository}}</span>
+                            <span class="state state-draft">Draft</span>
+                            <span class="pr-stats">
+                                <span class="stat-add">+{{.Additions}}</span>
+                                <span class="stat-del">−{{.Deletions}}</span>
+                                {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
+                            </span>
+                        </div>
+                    </li>
+                    {{end}}
+                </ul>
+            </div>
+            {{end}}
 
-        {{if .Draft}}
-        <div class="category">
-            <div class="category-title draft">Draft</div>
-            <ul class="pr-list">
-                {{range .Draft}}
-                <li class="pr-item">
-                    <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
-                    <div class="pr-meta">
-                        <span class="pr-repo">{{.Repository}}</span>
-                        <span class="state state-draft">Draft</span>
-                        <span class="pr-stats">
-                            <span class="stat-add">+{{.Additions}}</span>
-                            <span class="stat-del">−{{.Deletions}}</span>
-                            {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
-                        </span>
-                    </div>
-                </li>
-                {{end}}
-            </ul>
-        </div>
-        {{end}}
+            {{if .Merged}}
+            <div class="category">
+                <div class="category-title merged">Merged</div>
+                <ul class="pr-list">
+                    {{range .Merged}}
+                    <li class="pr-item">
+                        <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
+                        <div class="pr-meta">
+                            <span class="pr-repo">{{.Repository}}</span>
+                            <span class="state state-merged">Merged</span>
+                            <span class="pr-stats">
+                                <span class="stat-add">+{{.Additions}}</span>
+                                <span class="stat-del">−{{.Deletions}}</span>
+                                {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
+                            </span>
+                        </div>
+                    </li>
+                    {{end}}
+                </ul>
+            </div>
+            {{end}}
 
-        {{if .Merged}}
-        <div class="category">
-            <div class="category-title merged">Merged</div>
-            <ul class="pr-list">
-                {{range .Merged}}
-                <li class="pr-item">
-                    <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
-                    <div class="pr-meta">
-                        <span class="pr-repo">{{.Repository}}</span>
-                        <span class="state state-merged">Merged</span>
-                        <span class="pr-stats">
-                            <span class="stat-add">+{{.Additions}}</span>
-                            <span class="stat-del">−{{.Deletions}}</span>
-                            {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
-                        </span>
-                    </div>
-                </li>
-                {{end}}
-            </ul>
+            {{if .Reviewed}}
+            <div class="category">
+                <div class="category-title reviewed">Reviewed</div>
+                <ul class="pr-list">
+                    {{range .Reviewed}}
+                    <li class="pr-item">
+                        <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
+                        <div class="pr-meta">
+                            <span class="pr-repo">{{.Repository}}</span>
+                            {{if .IsDraft}}
+                            <span class="state state-draft">Draft</span>
+                            {{else if eq .State "merged"}}
+                            <span class="state state-merged">Merged</span>
+                            {{else if eq .State "open"}}
+                            <span class="state state-open">Open</span>
+                            {{else}}
+                            <span class="state state-closed">Closed</span>
+                            {{end}}
+                            <span class="pr-stats">
+                                <span class="stat-add">+{{.Additions}}</span>
+                                <span class="stat-del">−{{.Deletions}}</span>
+                                {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
+                            </span>
+                        </div>
+                    </li>
+                    {{end}}
+                </ul>
+            </div>
+            {{end}}
         </div>
-        {{end}}
-
-        {{if .Reviewed}}
-        <div class="category">
-            <div class="category-title reviewed">Reviewed</div>
-            <ul class="pr-list">
-                {{range .Reviewed}}
-                <li class="pr-item">
-                    <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
-                    <div class="pr-meta">
-                        <span class="pr-repo">{{.Repository}}</span>
-                        {{if .IsDraft}}
-                        <span class="state state-draft">Draft</span>
-                        {{else if eq .State "merged"}}
-                        <span class="state state-merged">Merged</span>
-                        {{else if eq .State "open"}}
-                        <span class="state state-open">Open</span>
-                        {{else}}
-                        <span class="state state-closed">Closed</span>
-                        {{end}}
-                        <span class="pr-stats">
-                            <span class="stat-add">+{{.Additions}}</span>
-                            <span class="stat-del">−{{.Deletions}}</span>
-                            {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
-                        </span>
-                    </div>
-                </li>
-                {{end}}
-            </ul>
-        </div>
-        {{end}}
-    </div>
+    </details>
     {{end}}
+    {{end}}
+
+    {{if .Report.Days}}
+    <script>
+        // Toggle all details
+        function toggleAll(open) {
+            document.querySelectorAll('details.day').forEach(d => d.open = open);
+        }
+
+        {{if gt (len .DailyStats) 1}}
+        // Chart.js common options
+        Chart.defaults.font.family = 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+        Chart.defaults.font.size = 11;
+        Chart.defaults.color = '#787774';
+
+        // Chart data for each period
+        const chartData = {
+            daily: {
+                labels: [{{range $i, $s := .DailyStats}}{{if $i}},{{end}}"{{$s.Date}}"{{end}}],
+                opened: [{{range $i, $s := .DailyStats}}{{if $i}},{{end}}{{$s.OpenedCount}}{{end}}],
+                draft: [{{range $i, $s := .DailyStats}}{{if $i}},{{end}}{{$s.DraftCount}}{{end}}],
+                merged: [{{range $i, $s := .DailyStats}}{{if $i}},{{end}}{{$s.MergedCount}}{{end}}],
+                reviewed: [{{range $i, $s := .DailyStats}}{{if $i}},{{end}}{{$s.ReviewedCount}}{{end}}]
+            },
+            weekly: {
+                labels: [{{range $i, $s := .WeeklyStats}}{{if $i}},{{end}}"{{$s.Week}}"{{end}}],
+                opened: [{{range $i, $s := .WeeklyStats}}{{if $i}},{{end}}{{$s.OpenedCount}}{{end}}],
+                draft: [{{range $i, $s := .WeeklyStats}}{{if $i}},{{end}}{{$s.DraftCount}}{{end}}],
+                merged: [{{range $i, $s := .WeeklyStats}}{{if $i}},{{end}}{{$s.MergedCount}}{{end}}],
+                reviewed: [{{range $i, $s := .WeeklyStats}}{{if $i}},{{end}}{{$s.ReviewedCount}}{{end}}]
+            },
+            monthly: {
+                labels: [{{range $i, $s := .MonthlyStats}}{{if $i}},{{end}}"{{$s.Month}}"{{end}}],
+                opened: [{{range $i, $s := .MonthlyStats}}{{if $i}},{{end}}{{$s.OpenedCount}}{{end}}],
+                draft: [{{range $i, $s := .MonthlyStats}}{{if $i}},{{end}}{{$s.DraftCount}}{{end}}],
+                merged: [{{range $i, $s := .MonthlyStats}}{{if $i}},{{end}}{{$s.MergedCount}}{{end}}],
+                reviewed: [{{range $i, $s := .MonthlyStats}}{{if $i}},{{end}}{{$s.ReviewedCount}}{{end}}]
+            }
+        };
+
+        // Activity Chart
+        const activityCtx = document.getElementById('activityChart').getContext('2d');
+        let activityChart = new Chart(activityCtx, {
+            type: 'bar',
+            data: {
+                labels: chartData.daily.labels,
+                datasets: [
+                    { label: 'Opened', data: chartData.daily.opened, backgroundColor: '#0f7b6c' },
+                    { label: 'Draft', data: chartData.daily.draft, backgroundColor: '#787774' },
+                    { label: 'Merged', data: chartData.daily.merged, backgroundColor: '#6940a5' },
+                    { label: 'Reviewed', data: chartData.daily.reviewed, backgroundColor: '#0b6e99' }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                barPercentage: 0.6,
+                categoryPercentage: 0.7,
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } }
+                },
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8 } }
+                }
+            }
+        });
+
+        // Tab switching
+        document.querySelectorAll('.chart-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                const period = this.dataset.period;
+                document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+
+                const data = chartData[period];
+                activityChart.data.labels = data.labels;
+                activityChart.data.datasets[0].data = data.opened;
+                activityChart.data.datasets[1].data = data.draft;
+                activityChart.data.datasets[2].data = data.merged;
+                activityChart.data.datasets[3].data = data.reviewed;
+                activityChart.update();
+            });
+        });
+
+        // Repository Activity Chart (Horizontal Bar)
+        const repoActivityCtx = document.getElementById('repoActivityChart').getContext('2d');
+        new Chart(repoActivityCtx, {
+            type: 'bar',
+            data: {
+                labels: [{{range $i, $s := .RepoStats}}{{if $i}},{{end}}"{{$s.Repository}}"{{end}}],
+                datasets: [{
+                    label: 'PRs',
+                    data: [{{range $i, $s := .RepoStats}}{{if $i}},{{end}}{{$s.Count}}{{end}}],
+                    backgroundColor: '#0b6e99'
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { beginAtZero: true, ticks: { stepSize: 1 } },
+                    y: { grid: { display: false } }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+        {{end}}
+    </script>
     {{end}}
 </body>
 </html>
