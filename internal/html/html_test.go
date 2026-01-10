@@ -268,10 +268,10 @@ func TestCalcSummaryDiff(t *testing.T) {
 		previousReport := &pr.Report{
 			Days: []pr.DailyPRs{
 				{
-					Opened: []github.PullRequest{{}, {}, {}, {}, {}, {}, {}}, // 7
-					Draft:  []github.PullRequest{{}, {}, {}, {}},             // 4
-					Merged: []github.PullRequest{{}, {}, {}, {}, {}, {}, {}, {}}, // 8
-					Reviewed: []github.PullRequest{{}, {}, {}},               // 3
+					Opened:   []github.PullRequest{{}, {}, {}, {}, {}, {}, {}},     // 7
+					Draft:    []github.PullRequest{{}, {}, {}, {}},                 // 4
+					Merged:   []github.PullRequest{{}, {}, {}, {}, {}, {}, {}, {}}, // 8
+					Reviewed: []github.PullRequest{{}, {}, {}},                     // 3
 				},
 			},
 		}

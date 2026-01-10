@@ -38,17 +38,17 @@ var prTitles = []string{
 
 // Demo generation constants
 const (
-	weekendActivityRate = 0.3  // Probability of activity on weekends
-	draftPRRate         = 0.3  // Probability of generating a draft PR (1 - 0.7)
-	maxOpenedPRs        = 4    // Max opened PRs per day (0-3)
-	maxMergedPRs        = 5    // Max merged PRs per day (0-4)
-	maxReviewedPRs      = 4    // Max reviewed PRs per day (0-3)
-	maxAdditions        = 500  // Max line additions
-	minAdditions        = 10   // Min line additions
-	maxDeletions        = 200  // Max line deletions
-	minDeletions        = 5    // Min line deletions
-	maxChangedFiles     = 20   // Max changed files
-	maxComments         = 10   // Max comments
+	weekendActivityRate = 0.3 // Probability of activity on weekends
+	draftPRRate         = 0.3 // Probability of generating a draft PR (1 - 0.7)
+	maxOpenedPRs        = 4   // Max opened PRs per day (0-3)
+	maxMergedPRs        = 5   // Max merged PRs per day (0-4)
+	maxReviewedPRs      = 4   // Max reviewed PRs per day (0-3)
+	maxAdditions        = 500 // Max line additions
+	minAdditions        = 10  // Min line additions
+	maxDeletions        = 200 // Max line deletions
+	minDeletions        = 5   // Min line deletions
+	maxChangedFiles     = 20  // Max changed files
+	maxComments         = 10  // Max comments
 )
 
 // GenerateReport generates demo data for the given date range
