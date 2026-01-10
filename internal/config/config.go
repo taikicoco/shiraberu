@@ -4,37 +4,23 @@ import (
 	"os"
 	"path/filepath"
 
-	"gopkg.in/yaml.v3"
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	Org       string `yaml:"org"`
-	Period    string `yaml:"period"`
-	Format    string `yaml:"format"`
-	OutputDir string `yaml:"output_dir"`
+	Org       string
+	Format    string
+	OutputDir string
 }
 
 func Load() (*Config, error) {
+	// .env ファイルを読み込み（存在しなくてもエラーにしない）
+	_ = godotenv.Load()
+
 	cfg := &Config{
-		Period:    "today",
-		Format:    "markdown",
-		OutputDir: "./output",
-	}
-
-	paths := []string{
-		filepath.Join(os.Getenv("HOME"), ".config", "shiraberu", "config.yaml"),
-		filepath.Join(os.Getenv("HOME"), ".shiraberu.yaml"),
-	}
-
-	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		if err := yaml.Unmarshal(data, cfg); err != nil {
-			return nil, err
-		}
-		break
+		Org:       os.Getenv("SHIRABERU_ORG"),
+		Format:    getEnvOrDefault("SHIRABERU_FORMAT", "markdown"),
+		OutputDir: getEnvOrDefault("SHIRABERU_OUTPUT_DIR", "./output"),
 	}
 
 	if cfg.OutputDir != "" {
@@ -47,4 +33,11 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }

@@ -13,6 +13,8 @@ import (
 	"github.com/taikicoco/shiraberu/internal/config"
 )
 
+const backOption = "← Back"
+
 type Options struct {
 	Org        string
 	StartDate  time.Time
@@ -21,36 +23,68 @@ type Options struct {
 	OutputPath string
 }
 
+type step int
+
+const (
+	stepOrg step = iota
+	stepPeriodMode
+	stepPeriodDetail
+	stepFormat
+	stepDone
+)
+
 func Run(cfg *config.Config) (*Options, error) {
 	reader := bufio.NewReader(os.Stdin)
 	opts := &Options{}
 
-	// Organization
-	opts.Org = promptText(reader, "Organization を入力してください", cfg.Org)
-	if opts.Org == "" {
-		return nil, fmt.Errorf("organization is required")
-	}
+	currentStep := stepOrg
 
-	// Period selection
-	startDate, endDate, err := promptPeriod(reader)
-	if err != nil {
-		return nil, err
-	}
-	opts.StartDate = startDate
-	opts.EndDate = endDate
+	for currentStep != stepDone {
+		switch currentStep {
+		case stepOrg:
+			opts.Org = promptText(reader, "Organization", cfg.Org)
+			if opts.Org == "" {
+				return nil, fmt.Errorf("organization is required")
+			}
+			currentStep = stepPeriodMode
 
-	// Format
-	formats := []string{"Markdown", "HTML", "HTML (ブラウザで表示)"}
-	formatValues := []string{"markdown", "html", "browser"}
-	defaultIdx := 0
-	for i, v := range formatValues {
-		if v == cfg.Format {
-			defaultIdx = i
-			break
+		case stepPeriodMode:
+			modes := []string{"Single day", "Date range", backOption}
+			idx := promptSelect("Period type", modes, 0)
+			if idx == 2 { // Back
+				currentStep = stepOrg
+				continue
+			}
+			var goBack bool
+			if idx == 0 {
+				opts.StartDate, opts.EndDate, goBack = promptSingleDay(reader)
+			} else {
+				opts.StartDate, opts.EndDate, goBack = promptDateRange(reader)
+			}
+			if goBack {
+				continue // Stay at stepPeriodMode
+			}
+			currentStep = stepFormat
+
+		case stepFormat:
+			formats := []string{"Markdown", "HTML", "HTML (open in browser)", backOption}
+			formatValues := []string{"markdown", "html", "browser"}
+			defaultIdx := 0
+			for i, v := range formatValues {
+				if v == cfg.Format {
+					defaultIdx = i
+					break
+				}
+			}
+			idx := promptSelect("Output format", formats, defaultIdx)
+			if idx == 3 { // Back
+				currentStep = stepPeriodMode
+				continue
+			}
+			opts.Format = formatValues[idx]
+			currentStep = stepDone
 		}
 	}
-	idx := promptSelect("出力形式を選択してください", formats, defaultIdx)
-	opts.Format = formatValues[idx]
 
 	// Output path (auto-generate if output_dir is set)
 	if opts.Format != "browser" && cfg.OutputDir != "" {
@@ -72,32 +106,22 @@ func generateFilename(start, end time.Time, ext string) string {
 	return start.Format("2006-01-02") + "_" + end.Format("2006-01-02") + ext
 }
 
-func promptPeriod(reader *bufio.Reader) (time.Time, time.Time, error) {
-	// 1日 or 範囲
-	modes := []string{"1日だけ", "範囲で指定"}
-	modeIdx := promptSelect("期間の指定方法", modes, 0)
-
+func promptSingleDay(reader *bufio.Reader) (time.Time, time.Time, bool) {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-
-	if modeIdx == 0 {
-		// 1日だけ
-		return promptSingleDay(reader, today)
-	}
-
-	// 範囲で指定
-	return promptDateRange(reader, today)
-}
-
-func promptSingleDay(reader *bufio.Reader, today time.Time) (time.Time, time.Time, error) {
 	yesterday := today.AddDate(0, 0, -1)
 
 	options := []string{
-		fmt.Sprintf("今日 (%s)", today.Format("2006-01-02")),
-		fmt.Sprintf("昨日 (%s)", yesterday.Format("2006-01-02")),
-		"日付を入力",
+		fmt.Sprintf("Today (%s)", today.Format("2006-01-02")),
+		fmt.Sprintf("Yesterday (%s)", yesterday.Format("2006-01-02")),
+		"Enter date",
+		backOption,
 	}
-	idx := promptSelect("日付を選択", options, 0)
+	idx := promptSelect("Select date", options, 0)
+
+	if idx == 3 { // Back
+		return time.Time{}, time.Time{}, true
+	}
 
 	var date time.Time
 	switch idx {
@@ -106,16 +130,18 @@ func promptSingleDay(reader *bufio.Reader, today time.Time) (time.Time, time.Tim
 	case 1:
 		date = yesterday
 	case 2:
-		date = promptDate(reader, "日付 (YYYY-MM-DD)", today)
+		date = promptDate(reader, "Date (YYYY-MM-DD)", today)
 	}
 
-	return date, date, nil
+	return date, date, false
 }
 
-func promptDateRange(reader *bufio.Reader, today time.Time) (time.Time, time.Time, error) {
-	weekdays := []string{"日", "月", "火", "水", "木", "金", "土"}
+func promptDateRange(reader *bufio.Reader) (time.Time, time.Time, bool) {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	weekdays := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
 
-	// 今週の月曜日を計算
+	// Calculate this Monday
 	weekday := int(today.Weekday())
 	if weekday == 0 {
 		weekday = 7
@@ -124,61 +150,67 @@ func promptDateRange(reader *bufio.Reader, today time.Time) (time.Time, time.Tim
 	lastMonday := thisMonday.AddDate(0, 0, -7)
 	lastSunday := thisMonday.AddDate(0, 0, -1)
 
-	// 今月の1日
+	// First day of this month
 	thisMonthStart := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, today.Location())
-	// 先月
+	// Last month
 	lastMonthStart := thisMonthStart.AddDate(0, -1, 0)
 	lastMonthEnd := thisMonthStart.AddDate(0, 0, -1)
 
 	options := []string{
-		fmt.Sprintf("今週 (%s %s 〜 %s %s)", thisMonday.Format("1/2"), weekdays[thisMonday.Weekday()], today.Format("1/2"), weekdays[today.Weekday()]),
-		fmt.Sprintf("先週 (%s %s 〜 %s %s)", lastMonday.Format("1/2"), weekdays[lastMonday.Weekday()], lastSunday.Format("1/2"), weekdays[lastSunday.Weekday()]),
-		fmt.Sprintf("今月 (%s 〜 %s)", thisMonthStart.Format("1/2"), today.Format("1/2")),
-		fmt.Sprintf("先月 (%s 〜 %s)", lastMonthStart.Format("1/2"), lastMonthEnd.Format("1/2")),
-		"過去N日",
-		"日付を入力",
+		fmt.Sprintf("This week (%s %s - %s %s)", thisMonday.Format("1/2"), weekdays[thisMonday.Weekday()], today.Format("1/2"), weekdays[today.Weekday()]),
+		fmt.Sprintf("Last week (%s %s - %s %s)", lastMonday.Format("1/2"), weekdays[lastMonday.Weekday()], lastSunday.Format("1/2"), weekdays[lastSunday.Weekday()]),
+		fmt.Sprintf("This month (%s - %s)", thisMonthStart.Format("1/2"), today.Format("1/2")),
+		fmt.Sprintf("Last month (%s - %s)", lastMonthStart.Format("1/2"), lastMonthEnd.Format("1/2")),
+		"Last N days",
+		"Enter dates",
+		backOption,
 	}
-	idx := promptSelect("範囲を選択", options, 0)
+	idx := promptSelect("Select range", options, 0)
+
+	if idx == 6 { // Back
+		return time.Time{}, time.Time{}, true
+	}
 
 	var start, end time.Time
 	switch idx {
-	case 0: // 今週
+	case 0: // This week
 		start, end = thisMonday, today
-	case 1: // 先週
+	case 1: // Last week
 		start, end = lastMonday, lastSunday
-	case 2: // 今月
+	case 2: // This month
 		start, end = thisMonthStart, today
-	case 3: // 先月
+	case 3: // Last month
 		start, end = lastMonthStart, lastMonthEnd
-	case 4: // 過去N日
-		n := promptNumber(reader, "何日前から？", 7)
+	case 4: // Last N days
+		n := promptNumber(reader, "How many days?", 7)
 		start = today.AddDate(0, 0, -n+1)
 		end = today
-	case 5: // 日付を入力
-		start = promptDate(reader, "開始日 (YYYY-MM-DD)", today.AddDate(0, 0, -7))
-		end = promptDate(reader, "終了日 (YYYY-MM-DD)", today)
+	case 5: // Enter dates
+		start = promptDate(reader, "Start date (YYYY-MM-DD)", today.AddDate(0, 0, -7))
+		end = promptDate(reader, "End date (YYYY-MM-DD)", today)
 	}
 
-	// 確認・修正
-	return confirmDateRange(reader, start, end)
+	// Confirm
+	start, end = confirmDateRange(reader, start, end)
+	return start, end, false
 }
 
-func confirmDateRange(reader *bufio.Reader, start, end time.Time) (time.Time, time.Time, error) {
-	fmt.Printf("\n期間: %s 〜 %s\n", start.Format("2006-01-02"), end.Format("2006-01-02"))
-	fmt.Print("? この期間でよいですか？ [Enter: OK / s: 開始日修正 / e: 終了日修正]: ")
+func confirmDateRange(reader *bufio.Reader, start, end time.Time) (time.Time, time.Time) {
+	fmt.Printf("\nPeriod: %s - %s\n", start.Format("2006-01-02"), end.Format("2006-01-02"))
+	fmt.Print("? Confirm? [Enter: OK / s: change start / e: change end]: ")
 
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(strings.ToLower(input))
 
 	switch input {
 	case "s":
-		start = promptDate(reader, "開始日 (YYYY-MM-DD)", start)
+		start = promptDate(reader, "Start date (YYYY-MM-DD)", start)
 		return confirmDateRange(reader, start, end)
 	case "e":
-		end = promptDate(reader, "終了日 (YYYY-MM-DD)", end)
+		end = promptDate(reader, "End date (YYYY-MM-DD)", end)
 		return confirmDateRange(reader, start, end)
 	default:
-		return start, end, nil
+		return start, end
 	}
 }
 
@@ -188,7 +220,7 @@ func promptDate(reader *bufio.Reader, label string, defaultDate time.Time) time.
 
 	parsed, err := time.Parse("2006-01-02", input)
 	if err != nil {
-		fmt.Println("  無効な日付形式です。デフォルトを使用します。")
+		fmt.Println("  Invalid date format. Using default.")
 		return defaultDate
 	}
 	return parsed

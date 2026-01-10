@@ -1,8 +1,9 @@
-package html
+package render
 
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/taikicoco/shiraberu/internal/github"
@@ -13,7 +14,7 @@ func formatPeriod(start, end time.Time) string {
 	if start.Equal(end) {
 		return start.Format("2006-01-02")
 	}
-	return start.Format("2006-01-02") + " 〜 " + end.Format("2006-01-02")
+	return start.Format("2006-01-02") + " - " + end.Format("2006-01-02")
 }
 
 func RenderMarkdown(w io.Writer, report *pr.Report) error {
@@ -21,21 +22,21 @@ func RenderMarkdown(w io.Writer, report *pr.Report) error {
 
 	fmt.Fprintf(w, "# PR Log (%s)\n\n", periodLabel)
 	fmt.Fprintf(w, "Organization: %s\n", report.Org)
-	fmt.Fprintf(w, "生成日時: %s\n\n", report.GeneratedAt.Format("2006-01-02 15:04"))
+	fmt.Fprintf(w, "Generated: %s\n\n", report.GeneratedAt.Format("2006-01-02 15:04"))
 
 	if len(report.Days) == 0 {
-		fmt.Fprintln(w, "該当するPRはありませんでした。")
+		fmt.Fprintln(w, "No pull requests found.")
 		return nil
 	}
 
-	weekdays := []string{"日", "月", "火", "水", "木", "金", "土"}
+	weekdays := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
 
 	for _, day := range report.Days {
 		weekday := weekdays[day.Date.Weekday()]
 		fmt.Fprintf(w, "## %s (%s)\n\n", day.Date.Format("2006-01-02"), weekday)
 
 		if len(day.Opened) > 0 {
-			fmt.Fprintln(w, "### オープンしたPR")
+			fmt.Fprintln(w, "### Opened")
 			for _, p := range day.Opened {
 				writePRLine(w, p)
 			}
@@ -43,7 +44,7 @@ func RenderMarkdown(w io.Writer, report *pr.Report) error {
 		}
 
 		if len(day.Merged) > 0 {
-			fmt.Fprintln(w, "### マージしたPR")
+			fmt.Fprintln(w, "### Merged")
 			for _, p := range day.Merged {
 				writePRLine(w, p)
 			}
@@ -51,7 +52,7 @@ func RenderMarkdown(w io.Writer, report *pr.Report) error {
 		}
 
 		if len(day.Reviewed) > 0 {
-			fmt.Fprintln(w, "### レビューしたPR")
+			fmt.Fprintln(w, "### Reviewed")
 			for _, p := range day.Reviewed {
 				writePRLine(w, p)
 			}
@@ -71,5 +72,5 @@ func capitalize(s string) string {
 	if s == "" {
 		return s
 	}
-	return string(s[0]-32) + s[1:]
+	return strings.ToUpper(s[:1]) + s[1:]
 }

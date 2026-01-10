@@ -354,9 +354,9 @@
                 <div class="chart-title">Activity</div>
                 {{if or (gt (len .WeeklyStats) 1) (gt (len .MonthlyStats) 1)}}
                 <div class="chart-tabs">
-                    <button class="chart-tab active" data-period="daily">日別</button>
-                    {{if gt (len .WeeklyStats) 1}}<button class="chart-tab" data-period="weekly">週別</button>{{end}}
-                    {{if gt (len .MonthlyStats) 1}}<button class="chart-tab" data-period="monthly">月別</button>{{end}}
+                    <button class="chart-tab active" data-period="daily">Day</button>
+                    {{if gt (len .WeeklyStats) 1}}<button class="chart-tab" data-period="weekly">Week</button>{{end}}
+                    {{if gt (len .MonthlyStats) 1}}<button class="chart-tab" data-period="monthly">Month</button>{{end}}
                 </div>
                 {{end}}
             </div>
@@ -376,13 +376,13 @@
     {{end}}
 
     <div class="toggle-controls">
-        <button class="toggle-btn" onclick="toggleAll(true)">すべて開く</button>
-        <button class="toggle-btn" onclick="toggleAll(false)">すべて閉じる</button>
+        <button class="toggle-btn" onclick="toggleAll(true)">Open All</button>
+        <button class="toggle-btn" onclick="toggleAll(false)">Close All</button>
     </div>
     {{end}}
 
     {{if not .Report.Days}}
-    <div class="empty">該当するPRはありませんでした</div>
+    <div class="empty">No pull requests found</div>
     {{else}}
     {{range $index, $day := .Report.Days}}
     {{$totalPRs := len .Opened | add (len .Draft) | add (len .Merged) | add (len .Reviewed)}}

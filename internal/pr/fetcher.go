@@ -24,36 +24,36 @@ type Report struct {
 }
 
 type Fetcher struct {
-	client *github.Client
+	client github.PRSearcher
 }
 
-func NewFetcher(client *github.Client) *Fetcher {
+func NewFetcher(client github.PRSearcher) *Fetcher {
 	return &Fetcher{client: client}
 }
 
 func (f *Fetcher) Fetch(org string, startDate, endDate time.Time) (*Report, error) {
 	username := f.client.Username()
 
-	// 日本時間で日付範囲を指定（GitHub APIはISO 8601形式でタイムゾーンを認識）
+	// JST timezone for date range
 	jst := time.FixedZone("JST", 9*60*60)
 	startTime := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, jst)
 	endTime := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 0, jst)
 
 	dateRange := startTime.Format(time.RFC3339) + ".." + endTime.Format(time.RFC3339)
 
-	// オープンしたPR: 作成日で絞り込み
+	// Opened PRs
 	openedPRs, err := f.client.SearchPRs(org, "is:pr author:"+username+" is:open", "created:"+dateRange)
 	if err != nil {
 		return nil, err
 	}
 
-	// マージしたPR: マージ日で絞り込み
+	// Merged PRs
 	mergedPRs, err := f.client.SearchPRs(org, "is:pr author:"+username+" is:merged", "merged:"+dateRange)
 	if err != nil {
 		return nil, err
 	}
 
-	// レビューしたPR: 更新日で絞り込み（レビュー日は直接取れないため）
+	// Reviewed PRs
 	reviewedPRs, err := f.client.SearchPRs(org, "is:pr reviewed-by:"+username+" -author:"+username, "updated:"+dateRange)
 	if err != nil {
 		return nil, err

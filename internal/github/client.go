@@ -4,12 +4,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 )
+
+// execCommand is a variable for mocking exec.Command in tests
+var execCommand = exec.Command
+
+// PRSearcher is an interface for searching PRs (for mocking in tests)
+type PRSearcher interface {
+	Username() string
+	SearchPRs(org string, query string, dateFilter string) ([]PullRequest, error)
+}
 
 type Client struct {
 	username string
 }
+
+// Ensure Client implements PRSearcher
+var _ PRSearcher = (*Client)(nil)
 
 func NewClient() (*Client, error) {
 	username, err := getUsername()
@@ -24,12 +37,16 @@ func (c *Client) Username() string {
 }
 
 func getUsername() (string, error) {
-	cmd := exec.Command("gh", "api", "user", "--jq", ".login")
+	cmd := execCommand("gh", "api", "user", "--jq", ".login")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
-	return string(out[:len(out)-1]), nil
+	username := strings.TrimSpace(string(out))
+	if username == "" {
+		return "", fmt.Errorf("empty username returned from GitHub API")
+	}
+	return username, nil
 }
 
 const searchQuery = `
@@ -107,7 +124,7 @@ func (c *Client) SearchPRs(org string, query string, dateFilter string) ([]PullR
 			args = append(args, "-f", "cursor="+cursor)
 		}
 
-		cmd := exec.Command("gh", args...)
+		cmd := execCommand("gh", args...)
 		out, err := cmd.Output()
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {

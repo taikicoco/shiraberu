@@ -9,10 +9,11 @@ import (
 	"github.com/taikicoco/shiraberu/internal/config"
 	"github.com/taikicoco/shiraberu/internal/demo"
 	"github.com/taikicoco/shiraberu/internal/github"
-	"github.com/taikicoco/shiraberu/internal/html"
 	"github.com/taikicoco/shiraberu/internal/pr"
 	"github.com/taikicoco/shiraberu/internal/prompt"
+	"github.com/taikicoco/shiraberu/internal/render"
 	"github.com/taikicoco/shiraberu/internal/server"
+	"github.com/taikicoco/shiraberu/internal/spinner"
 )
 
 var demoMode = flag.Bool("demo", false, "Run with demo data (no GitHub API calls)")
@@ -42,27 +43,35 @@ func run() error {
 		return err
 	}
 
-	fmt.Println("\nレポートを生成しています...")
-
 	client, err := github.NewClient()
 	if err != nil {
 		return fmt.Errorf("failed to create GitHub client: %w", err)
 	}
 
 	fetcher := pr.NewFetcher(client)
+
+	// Fetch current period with spinner
+	spin := spinner.New("Fetching PRs...")
+	spin.Start()
 	report, err := fetcher.Fetch(opts.Org, opts.StartDate, opts.EndDate)
 	if err != nil {
+		spin.Fail("Failed to fetch PRs")
 		return fmt.Errorf("failed to fetch PRs: %w", err)
 	}
+	spin.Success("Fetched PRs")
 
-	// 前期間のデータを取得（同じ期間長さで、直前の期間）
+	// Fetch previous period for comparison
+	spin = spinner.New("Fetching previous period...")
+	spin.Start()
 	duration := opts.EndDate.Sub(opts.StartDate)
 	prevEndDate := opts.StartDate.AddDate(0, 0, -1)
 	prevStartDate := prevEndDate.Add(-duration)
 	previousReport, err := fetcher.Fetch(opts.Org, prevStartDate, prevEndDate)
 	if err != nil {
-		// 前期間の取得に失敗しても続行（差分表示なしで）
+		spin.Fail("Previous period unavailable")
 		previousReport = nil
+	} else {
+		spin.Success("Fetched previous period")
 	}
 
 	switch opts.Format {
@@ -71,31 +80,31 @@ func run() error {
 
 	case "html":
 		if opts.OutputPath == "" {
-			return html.RenderHTML(os.Stdout, report, previousReport)
+			return render.RenderHTML(os.Stdout, report, previousReport)
 		}
 		f, err := os.Create(opts.OutputPath)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
-		if err := html.RenderHTML(f, report, previousReport); err != nil {
+		if err := render.RenderHTML(f, report, previousReport); err != nil {
 			return err
 		}
-		fmt.Printf("✓ %s に出力しました\n", opts.OutputPath)
+		fmt.Printf("✓ Saved to %s\n", opts.OutputPath)
 
 	default: // markdown
 		if opts.OutputPath == "" {
-			return html.RenderMarkdown(os.Stdout, report)
+			return render.RenderMarkdown(os.Stdout, report)
 		}
 		f, err := os.Create(opts.OutputPath)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
-		if err := html.RenderMarkdown(f, report); err != nil {
+		if err := render.RenderMarkdown(f, report); err != nil {
 			return err
 		}
-		fmt.Printf("✓ %s に出力しました\n", opts.OutputPath)
+		fmt.Printf("✓ Saved to %s\n", opts.OutputPath)
 	}
 
 	return nil
