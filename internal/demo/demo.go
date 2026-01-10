@@ -59,10 +59,9 @@ func GenerateReport(startDate, endDate time.Time) (*pr.Report, *pr.Report) {
 	// Generate current period
 	report := generatePeriodReport(startDate, endDate, jst, r, "demo-org")
 
-	// Generate previous period for comparison
-	duration := endDate.Sub(startDate)
+	// Generate previous period for comparison (previous month)
 	prevEndDate := startDate.AddDate(0, 0, -1)
-	prevStartDate := prevEndDate.Add(-duration)
+	prevStartDate := time.Date(prevEndDate.Year(), prevEndDate.Month(), 1, 0, 0, 0, 0, prevEndDate.Location())
 	previousReport := generatePeriodReport(prevStartDate, prevEndDate, jst, r, "demo-org")
 
 	return report, previousReport

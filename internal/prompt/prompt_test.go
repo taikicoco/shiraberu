@@ -67,6 +67,7 @@ func TestOptions_Struct(t *testing.T) {
 		Org:        "test-org",
 		StartDate:  time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:    time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC),
+		PeriodType: PeriodTypeMonth,
 		Format:     "html",
 		OutputPath: "/path/to/output.html",
 	}
@@ -76,5 +77,39 @@ func TestOptions_Struct(t *testing.T) {
 	}
 	if opts.Format != "html" {
 		t.Errorf("Format: got %q, want %q", opts.Format, "html")
+	}
+	if opts.PeriodType != PeriodTypeMonth {
+		t.Errorf("PeriodType: got %q, want %q", opts.PeriodType, PeriodTypeMonth)
+	}
+}
+
+func TestPeriodTypeConstants(t *testing.T) {
+	if PeriodTypeWeek != "week" {
+		t.Errorf("PeriodTypeWeek: got %q, want %q", PeriodTypeWeek, "week")
+	}
+	if PeriodTypeMonth != "month" {
+		t.Errorf("PeriodTypeMonth: got %q, want %q", PeriodTypeMonth, "month")
+	}
+	if PeriodTypeCustom != "custom" {
+		t.Errorf("PeriodTypeCustom: got %q, want %q", PeriodTypeCustom, "custom")
+	}
+}
+
+func TestPromptSelectMonth(t *testing.T) {
+	today := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
+
+	// Test that promptSelectMonth returns valid date range for a month
+	// Note: We can't fully test the interactive selection, but we can test the month calculation
+	start, end := promptSelectMonth(today)
+
+	// Start should be the first day of a month
+	if start.Day() != 1 {
+		t.Errorf("Start day should be 1, got %d", start.Day())
+	}
+
+	// End should be the last day of the same month
+	expectedEnd := start.AddDate(0, 1, -1)
+	if !end.Equal(expectedEnd) {
+		t.Errorf("End date: got %v, want %v", end, expectedEnd)
 	}
 }

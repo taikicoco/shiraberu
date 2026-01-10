@@ -56,13 +56,13 @@ func TestCalcSummary(t *testing.T) {
 	if summary.ReviewedCount != 2 {
 		t.Errorf("ReviewedCount: got %d, want 2", summary.ReviewedCount)
 	}
-	// Additions: 100+200+10+500+50+300 = 1160
-	if summary.Additions != 1160 {
-		t.Errorf("Additions: got %d, want 1160", summary.Additions)
+	// Additions: only merged PRs (500+300 = 800)
+	if summary.Additions != 800 {
+		t.Errorf("Additions: got %d, want 800", summary.Additions)
 	}
-	// Deletions: 50+30+5+100+20+150 = 355
-	if summary.Deletions != 355 {
-		t.Errorf("Deletions: got %d, want 355", summary.Deletions)
+	// Deletions: only merged PRs (100+150 = 250)
+	if summary.Deletions != 250 {
+		t.Errorf("Deletions: got %d, want 250", summary.Deletions)
 	}
 }
 
@@ -197,6 +197,20 @@ func TestCalcWeeklyStats(t *testing.T) {
 	if stats[1].MergedCount != 0 {
 		t.Errorf("stats[1].MergedCount: got %d, want 0", stats[1].MergedCount)
 	}
+
+	// Check StartDate/EndDate
+	if stats[0].StartDate != "2024-12-30" {
+		t.Errorf("stats[0].StartDate: got %s, want 2024-12-30", stats[0].StartDate)
+	}
+	if stats[0].EndDate != "2025-01-05" {
+		t.Errorf("stats[0].EndDate: got %s, want 2025-01-05", stats[0].EndDate)
+	}
+	if stats[1].StartDate != "2025-01-06" {
+		t.Errorf("stats[1].StartDate: got %s, want 2025-01-06", stats[1].StartDate)
+	}
+	if stats[1].EndDate != "2025-01-12" {
+		t.Errorf("stats[1].EndDate: got %s, want 2025-01-12", stats[1].EndDate)
+	}
 }
 
 func TestCalcMonthlyStats(t *testing.T) {
@@ -231,11 +245,11 @@ func TestCalcMonthlyStats(t *testing.T) {
 	}
 
 	// Should be sorted by month ascending
-	if stats[0].Month != "Dec" {
-		t.Errorf("stats[0].Month: got %s, want Dec", stats[0].Month)
+	if stats[0].Month != "Dec 2024" {
+		t.Errorf("stats[0].Month: got %s, want Dec 2024", stats[0].Month)
 	}
-	if stats[1].Month != "Jan" {
-		t.Errorf("stats[1].Month: got %s, want Jan", stats[1].Month)
+	if stats[1].Month != "Jan 2025" {
+		t.Errorf("stats[1].Month: got %s, want Jan 2025", stats[1].Month)
 	}
 
 	// Check December
@@ -246,6 +260,20 @@ func TestCalcMonthlyStats(t *testing.T) {
 	// Check January (aggregated)
 	if stats[1].OpenedCount != 3 {
 		t.Errorf("stats[1].OpenedCount: got %d, want 3", stats[1].OpenedCount)
+	}
+
+	// Check StartDate/EndDate
+	if stats[0].StartDate != "2024-12-01" {
+		t.Errorf("stats[0].StartDate: got %s, want 2024-12-01", stats[0].StartDate)
+	}
+	if stats[0].EndDate != "2024-12-31" {
+		t.Errorf("stats[0].EndDate: got %s, want 2024-12-31", stats[0].EndDate)
+	}
+	if stats[1].StartDate != "2025-01-01" {
+		t.Errorf("stats[1].StartDate: got %s, want 2025-01-01", stats[1].StartDate)
+	}
+	if stats[1].EndDate != "2025-01-31" {
+		t.Errorf("stats[1].EndDate: got %s, want 2025-01-31", stats[1].EndDate)
 	}
 }
 

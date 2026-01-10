@@ -2,11 +2,14 @@ package render
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
 	"sort"
+	"time"
 
+	"github.com/taikicoco/shiraberu/internal/github"
 	"github.com/taikicoco/shiraberu/internal/pr"
 )
 
@@ -18,6 +21,10 @@ var htmlTemplate *template.Template
 func init() {
 	funcMap := template.FuncMap{
 		"add": func(a, b int) int { return a + b },
+		"json": func(v interface{}) template.JS {
+			b, _ := json.Marshal(v)
+			return template.JS(b)
+		},
 	}
 	var err error
 	htmlTemplate, err = template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/*.html")
@@ -58,7 +65,9 @@ type DailyStat struct {
 
 // WeeklyStat は週別統計データ
 type WeeklyStat struct {
-	Week          string // "1/1週" 形式
+	Week          string // "1/1 〜 1/7" 形式
+	StartDate     string // "2006-01-02" 形式
+	EndDate       string // "2006-01-02" 形式
 	OpenedCount   int
 	DraftCount    int
 	MergedCount   int
@@ -67,7 +76,9 @@ type WeeklyStat struct {
 
 // MonthlyStat は月別統計データ
 type MonthlyStat struct {
-	Month         string // "2006-01" 形式
+	Month         string // "Jan 2006" 形式
+	StartDate     string // "2006-01-02" 形式
+	EndDate       string // "2006-01-02" 形式
 	OpenedCount   int
 	DraftCount    int
 	MergedCount   int
@@ -80,16 +91,40 @@ type RepoStat struct {
 	Count      int
 }
 
+// DayJSON はJavaScript用の日別データ
+type DayJSON struct {
+	Date     string   `json:"date"`
+	Opened   []PRJSON `json:"opened"`
+	Draft    []PRJSON `json:"draft"`
+	Merged   []PRJSON `json:"merged"`
+	Reviewed []PRJSON `json:"reviewed"`
+}
+
+// PRJSON はJavaScript用のPRデータ
+type PRJSON struct {
+	Title      string `json:"title"`
+	URL        string `json:"url"`
+	Repository string `json:"repository"`
+	State      string `json:"state"`
+	IsDraft    bool   `json:"isDraft"`
+	Additions  int    `json:"additions"`
+	Deletions  int    `json:"deletions"`
+	Comments   int    `json:"comments"`
+}
+
 type HTMLData struct {
-	Report       *pr.Report
-	Summary      Summary
-	SummaryDiff  SummaryDiff
-	DailyStats   []DailyStat
-	WeeklyStats  []WeeklyStat
-	MonthlyStats []MonthlyStat
-	RepoStats    []RepoStat
-	Weekdays     []string
-	PeriodLabel  string
+	Report            *pr.Report
+	Summary           Summary
+	SummaryDiff       SummaryDiff
+	DailyStats        []DailyStat
+	WeeklyStats       []WeeklyStat
+	MonthlyStats      []MonthlyStat
+	RepoStats         []RepoStat
+	Weekdays          []string
+	PeriodLabel       string
+	DaysJSON          []DayJSON
+	OriginalStartDate string
+	OriginalEndDate   string
 }
 
 func RenderHTML(w io.Writer, report *pr.Report, previousReport *pr.Report) error {
@@ -99,19 +134,55 @@ func RenderHTML(w io.Writer, report *pr.Report, previousReport *pr.Report) error
 	monthlyStats := calcMonthlyStats(report)
 	repoStats := calcRepoStats(report)
 	summaryDiff := calcSummaryDiff(summary, previousReport)
+	daysJSON := convertToDaysJSON(report)
 
 	data := HTMLData{
-		Report:       report,
-		Summary:      summary,
-		SummaryDiff:  summaryDiff,
-		DailyStats:   dailyStats,
-		WeeklyStats:  weeklyStats,
-		MonthlyStats: monthlyStats,
-		RepoStats:    repoStats,
-		Weekdays:     []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
-		PeriodLabel:  formatPeriod(report.StartDate, report.EndDate),
+		Report:            report,
+		Summary:           summary,
+		SummaryDiff:       summaryDiff,
+		DailyStats:        dailyStats,
+		WeeklyStats:       weeklyStats,
+		MonthlyStats:      monthlyStats,
+		RepoStats:         repoStats,
+		Weekdays:          []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
+		PeriodLabel:       formatPeriod(report.StartDate, report.EndDate),
+		DaysJSON:          daysJSON,
+		OriginalStartDate: report.StartDate.Format("2006-01-02"),
+		OriginalEndDate:   report.EndDate.Format("2006-01-02"),
 	}
 	return htmlTemplate.ExecuteTemplate(w, "report.html", data)
+}
+
+func convertToDaysJSON(report *pr.Report) []DayJSON {
+	var days []DayJSON
+	for _, day := range report.Days {
+		d := DayJSON{
+			Date:     day.Date.Format("2006-01-02"),
+			Opened:   convertPRsToJSON(day.Opened),
+			Draft:    convertPRsToJSON(day.Draft),
+			Merged:   convertPRsToJSON(day.Merged),
+			Reviewed: convertPRsToJSON(day.Reviewed),
+		}
+		days = append(days, d)
+	}
+	return days
+}
+
+func convertPRsToJSON(prs []github.PullRequest) []PRJSON {
+	result := make([]PRJSON, 0, len(prs))
+	for _, p := range prs {
+		result = append(result, PRJSON{
+			Title:      p.Title,
+			URL:        p.URL,
+			Repository: p.Repository,
+			State:      p.State,
+			IsDraft:    p.IsDraft,
+			Additions:  p.Additions,
+			Deletions:  p.Deletions,
+			Comments:   p.Comments,
+		})
+	}
+	return result
 }
 
 func calcSummary(report *pr.Report) Summary {
@@ -121,14 +192,7 @@ func calcSummary(report *pr.Report) Summary {
 		s.DraftCount += len(day.Draft)
 		s.MergedCount += len(day.Merged)
 		s.ReviewedCount += len(day.Reviewed)
-		for _, p := range day.Opened {
-			s.Additions += p.Additions
-			s.Deletions += p.Deletions
-		}
-		for _, p := range day.Draft {
-			s.Additions += p.Additions
-			s.Deletions += p.Deletions
-		}
+		// Additions/Deletions are only counted for merged PRs
 		for _, p := range day.Merged {
 			s.Additions += p.Additions
 			s.Deletions += p.Deletions
@@ -230,8 +294,8 @@ func calcRepoStats(report *pr.Report) []RepoStat {
 
 func calcWeeklyStats(report *pr.Report) []WeeklyStat {
 	type weekData struct {
-		stat      *WeeklyStat
-		startDate string // for label generation
+		stat    *WeeklyStat
+		weekKey string
 	}
 	weekMap := make(map[string]*weekData)
 
@@ -248,8 +312,12 @@ func calcWeeklyStats(report *pr.Report) []WeeklyStat {
 			weekEnd := weekStart.AddDate(0, 0, 6) // Sunday
 			weekLabel := fmt.Sprintf("%d/%d 〜 %d/%d", weekStart.Month(), weekStart.Day(), weekEnd.Month(), weekEnd.Day())
 			weekMap[weekKey] = &weekData{
-				stat:      &WeeklyStat{Week: weekLabel},
-				startDate: weekKey,
+				stat: &WeeklyStat{
+					Week:      weekLabel,
+					StartDate: weekStart.Format("2006-01-02"),
+					EndDate:   weekEnd.Format("2006-01-02"),
+				},
+				weekKey: weekKey,
 			}
 		}
 
@@ -278,10 +346,17 @@ func calcMonthlyStats(report *pr.Report) []MonthlyStat {
 
 	for _, day := range report.Days {
 		monthKey := day.Date.Format("2006-01")
-		monthLabel := day.Date.Format("Jan")
+		monthLabel := day.Date.Format("Jan 2006")
 
 		if _, ok := monthMap[monthKey]; !ok {
-			monthMap[monthKey] = &MonthlyStat{Month: monthLabel}
+			// Calculate month start and end dates
+			monthStart := time.Date(day.Date.Year(), day.Date.Month(), 1, 0, 0, 0, 0, day.Date.Location())
+			monthEnd := monthStart.AddDate(0, 1, -1) // Last day of month
+			monthMap[monthKey] = &MonthlyStat{
+				Month:     monthLabel,
+				StartDate: monthStart.Format("2006-01-02"),
+				EndDate:   monthEnd.Format("2006-01-02"),
+			}
 		}
 
 		monthMap[monthKey].OpenedCount += len(day.Opened)
