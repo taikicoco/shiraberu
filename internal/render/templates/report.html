@@ -54,6 +54,9 @@
             padding: 1rem 1.25rem;
             min-width: 100px;
             flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.125rem;
         }
         .summary-value {
             display: block;
@@ -75,7 +78,6 @@
         .summary-diff {
             font-size: 0.75rem;
             font-weight: 500;
-            margin-top: 0.25rem;
         }
         .summary-diff.positive { color: var(--accent-green); }
         .summary-diff.negative { color: var(--accent-red); }
@@ -295,6 +297,65 @@
             border-radius: 12px;
             border: 1px solid var(--border-color);
         }
+        /* Date Filter */
+        .date-filter {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            padding: 0.75rem 1rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            flex-wrap: wrap;
+        }
+        .filter-tabs {
+            display: flex;
+            gap: 0.25rem;
+        }
+        .filter-tab {
+            padding: 0.25rem 0.625rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            transition: all 0.15s ease;
+        }
+        .filter-tab:hover {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+        .filter-tab.active {
+            background: var(--text-primary);
+            border-color: var(--text-primary);
+            color: var(--bg-primary);
+        }
+        .filter-content {
+            display: flex;
+            align-items: center;
+        }
+        .filter-mode {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .date-filter select {
+            padding: 0.25rem 0.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-family: inherit;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+        .filter-info {
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            margin-left: auto;
+        }
     </style>
 </head>
 <body>
@@ -304,7 +365,37 @@
     </div>
 
     {{if .Report.Days}}
-    <div class="summary">
+    {{if ne .OriginalStartDate .OriginalEndDate}}
+    <div class="date-filter">
+        {{if or (gt (len .WeeklyStats) 1) (gt (len .MonthlyStats) 1)}}
+        <div class="filter-tabs">
+            <button class="filter-tab active" data-mode="day">Day</button>
+            {{if gt (len .WeeklyStats) 1}}<button class="filter-tab" data-mode="week">Week</button>{{end}}
+            {{if gt (len .MonthlyStats) 1}}<button class="filter-tab" data-mode="month">Month</button>{{end}}
+        </div>
+        {{end}}
+        <div class="filter-content">
+            <div class="filter-mode" id="dayMode">
+                <select id="filterStartDate"></select>
+                <span>—</span>
+                <select id="filterEndDate"></select>
+            </div>
+            {{if gt (len .WeeklyStats) 1}}
+            <div class="filter-mode" id="weekMode" style="display:none;">
+                <select id="weekSelect"></select>
+            </div>
+            {{end}}
+            {{if gt (len .MonthlyStats) 1}}
+            <div class="filter-mode" id="monthMode" style="display:none;">
+                <select id="monthSelect"></select>
+            </div>
+            {{end}}
+        </div>
+        <span class="filter-info"><span id="daysCount"></span></span>
+    </div>
+    {{end}}
+
+    <div class="summary" id="summaryContainer">
         <div class="summary-item">
             <span class="summary-value opened">{{.Summary.OpenedCount}}</span>
             {{if .SummaryDiff.HasPrevious}}
@@ -343,7 +434,7 @@
         </div>
         <div class="summary-item">
             <span class="summary-value changes"><span class="stat-add">+{{.Summary.Additions}}</span> <span class="stat-del">−{{.Summary.Deletions}}</span></span>
-            <span class="summary-label">Changes</span>
+            <span class="summary-label">Merged</span>
         </div>
     </div>
 
@@ -494,10 +585,266 @@
 
     {{if .Report.Days}}
     <script>
+        // Raw PR data for filtering
+        const allDays = {{json .DaysJSON}};
+        const originalStartDate = "{{.OriginalStartDate}}";
+        const originalEndDate = "{{.OriginalEndDate}}";
+        const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
         // Toggle all details
         function toggleAll(open) {
             document.querySelectorAll('details.day').forEach(d => d.open = open);
         }
+
+        {{if ne .OriginalStartDate .OriginalEndDate}}
+        // Save original summary HTML for full range comparison
+        const originalSummaryHTML = document.getElementById('summaryContainer').innerHTML;
+
+        // Use server-generated stats (same as chart)
+        const weeks = [{{range $i, $s := .WeeklyStats}}{{if $i}},{{end}}{label: "{{$s.Week}}", start: "{{$s.StartDate}}", end: "{{$s.EndDate}}"}{{end}}];
+        const months = [{{range $i, $s := .MonthlyStats}}{{if $i}},{{end}}{label: "{{$s.Month}}", start: "{{$s.StartDate}}", end: "{{$s.EndDate}}"}{{end}}];
+
+        // Generate day options
+        function generateDays(start, end) {
+            const result = [];
+            let current = new Date(start);
+            const endDate = new Date(end);
+            while (current <= endDate) {
+                const dateStr = current.toISOString().split('T')[0];
+                result.push({ value: dateStr, label: dateStr });
+                current.setDate(current.getDate() + 1);
+            }
+            return result;
+        }
+        const days = generateDays(originalStartDate, originalEndDate);
+
+        // Initialize selects
+        function initSelects() {
+            const startSelect = document.getElementById('filterStartDate');
+            const endSelect = document.getElementById('filterEndDate');
+            days.forEach(d => {
+                startSelect.add(new Option(d.label, d.value));
+                endSelect.add(new Option(d.label, d.value));
+            });
+            endSelect.value = originalEndDate;
+
+            startSelect.onchange = endSelect.onchange = () => {
+                const start = startSelect.value;
+                const end = endSelect.value;
+                if (start <= end) updateView(start, end);
+            };
+
+            const weekSelect = document.getElementById('weekSelect');
+            if (weekSelect && weeks.length > 1) {
+                weeks.forEach((w, i) => {
+                    weekSelect.add(new Option(w.label, i));
+                });
+                weekSelect.value = weeks.length - 1;
+                weekSelect.onchange = () => {
+                    const w = weeks[weekSelect.value];
+                    updateView(w.start, w.end);
+                };
+            }
+
+            const monthSelect = document.getElementById('monthSelect');
+            if (monthSelect && months.length > 1) {
+                months.forEach((m, i) => {
+                    monthSelect.add(new Option(m.label, i));
+                });
+                monthSelect.value = months.length - 1;
+                monthSelect.onchange = () => {
+                    const m = months[monthSelect.value];
+                    updateView(m.start, m.end);
+                };
+            }
+        }
+        initSelects();
+
+        // Tab switching
+        document.querySelectorAll('.filter-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+
+                const mode = this.dataset.mode;
+                document.getElementById('dayMode').style.display = mode === 'day' ? 'flex' : 'none';
+                const weekMode = document.getElementById('weekMode');
+                const monthMode = document.getElementById('monthMode');
+                if (weekMode) weekMode.style.display = mode === 'week' ? 'flex' : 'none';
+                if (monthMode) monthMode.style.display = mode === 'month' ? 'flex' : 'none';
+
+                // Apply current selection
+                if (mode === 'day') {
+                    const start = document.getElementById('filterStartDate').value;
+                    const end = document.getElementById('filterEndDate').value;
+                    updateView(start, end);
+                } else if (mode === 'week') {
+                    const w = weeks[document.getElementById('weekSelect').value];
+                    updateView(w.start, w.end);
+                } else {
+                    const m = months[document.getElementById('monthSelect').value];
+                    updateView(m.start, m.end);
+                }
+            });
+        });
+
+        function updateView(startDate, endDate) {
+            // Filter days
+            const filteredDays = allDays.filter(day => day.date >= startDate && day.date <= endDate);
+
+            // Check if it's full range - use original summary with server-side comparison
+            const isFullRange = startDate === originalStartDate && endDate === originalEndDate;
+
+            if (isFullRange) {
+                // Restore original summary with server-calculated comparison
+                document.getElementById('summaryContainer').innerHTML = originalSummaryHTML;
+            } else {
+                // Calculate summary
+                const summary = calcFilteredSummary(filteredDays);
+
+                // Calculate previous period summary for diff
+                const dayCount = daysBetween(startDate, endDate) + 1;
+                const prevEndDate = addDays(startDate, -1);
+                const prevStartDate = addDays(prevEndDate, -(dayCount - 1));
+                const prevDays = allDays.filter(day => day.date >= prevStartDate && day.date <= prevEndDate);
+                const prevSummary = calcFilteredSummary(prevDays);
+                const hasPrevious = prevDays.length > 0;
+
+                // Update summary display
+                updateSummaryDisplay(summary, prevSummary, hasPrevious);
+            }
+
+            // Update PR list visibility
+            updatePRListVisibility(startDate, endDate);
+
+            // Update charts if exist
+            if (typeof activityChart !== 'undefined') {
+                updateActivityChart(filteredDays);
+            }
+            if (typeof repoActivityChart !== 'undefined') {
+                updateRepoActivityChart(filteredDays);
+            }
+
+            // Update days count
+            const totalDays = daysBetween(startDate, endDate) + 1;
+            document.getElementById('daysCount').textContent = `${totalDays} days`;
+        }
+
+        function calcFilteredSummary(days) {
+            let opened = 0, draft = 0, merged = 0, reviewed = 0, additions = 0, deletions = 0;
+            days.forEach(day => {
+                opened += day.opened.length;
+                draft += day.draft.length;
+                merged += day.merged.length;
+                reviewed += day.reviewed.length;
+                day.merged.forEach(pr => {
+                    additions += pr.additions;
+                    deletions += pr.deletions;
+                });
+            });
+            return { opened, draft, merged, reviewed, additions, deletions };
+        }
+
+        function updateSummaryDisplay(summary, prevSummary, hasPrevious) {
+            const container = document.getElementById('summaryContainer');
+            const diffHtml = (current, prev, has) => {
+                if (!has) return '';
+                const diff = current - prev;
+                const cls = diff > 0 ? 'positive' : diff < 0 ? 'negative' : 'neutral';
+                const arrow = diff > 0 ? '↑ +' : diff < 0 ? '↓ ' : '→ ';
+                return `<span class="summary-diff ${cls}">${arrow}${diff}</span>`;
+            };
+
+            container.innerHTML = `
+                <div class="summary-item">
+                    <span class="summary-value opened">${summary.opened}</span>
+                    ${diffHtml(summary.opened, prevSummary.opened, hasPrevious)}
+                    <span class="summary-label">Opened</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-value draft">${summary.draft}</span>
+                    ${diffHtml(summary.draft, prevSummary.draft, hasPrevious)}
+                    <span class="summary-label">Draft</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-value merged">${summary.merged}</span>
+                    ${diffHtml(summary.merged, prevSummary.merged, hasPrevious)}
+                    <span class="summary-label">Merged</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-value reviewed">${summary.reviewed}</span>
+                    ${diffHtml(summary.reviewed, prevSummary.reviewed, hasPrevious)}
+                    <span class="summary-label">Reviewed</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-value changes"><span class="stat-add">+${summary.additions}</span> <span class="stat-del">−${summary.deletions}</span></span>
+                    <span class="summary-label">Merged</span>
+                </div>
+            `;
+        }
+
+        function updatePRListVisibility(startDate, endDate) {
+            document.querySelectorAll('details.day').forEach(detail => {
+                const header = detail.querySelector('.day-header');
+                if (header) {
+                    const dateMatch = header.textContent.match(/(\d{4}-\d{2}-\d{2})/);
+                    if (dateMatch) {
+                        const date = dateMatch[1];
+                        detail.style.display = (date >= startDate && date <= endDate) ? '' : 'none';
+                    }
+                }
+            });
+        }
+
+        function updateActivityChart(filteredDays) {
+            // Sort by date ascending
+            const sorted = [...filteredDays].sort((a, b) => a.date.localeCompare(b.date));
+
+            const labels = sorted.map(d => d.date);
+            const opened = sorted.map(d => d.opened.length);
+            const draft = sorted.map(d => d.draft.length);
+            const merged = sorted.map(d => d.merged.length);
+            const reviewed = sorted.map(d => d.reviewed.length);
+
+            activityChart.data.labels = labels;
+            activityChart.data.datasets[0].data = opened;
+            activityChart.data.datasets[1].data = draft;
+            activityChart.data.datasets[2].data = merged;
+            activityChart.data.datasets[3].data = reviewed;
+            activityChart.update();
+        }
+
+        function updateRepoActivityChart(filteredDays) {
+            // Calculate repo stats from filtered data
+            const repoCount = {};
+            filteredDays.forEach(day => {
+                [...day.opened, ...day.draft, ...day.merged, ...day.reviewed].forEach(pr => {
+                    repoCount[pr.repository] = (repoCount[pr.repository] || 0) + 1;
+                });
+            });
+
+            // Sort by count descending
+            const sorted = Object.entries(repoCount)
+                .sort((a, b) => b[1] - a[1]);
+
+            repoActivityChart.data.labels = sorted.map(([repo]) => repo);
+            repoActivityChart.data.datasets[0].data = sorted.map(([, count]) => count);
+            repoActivityChart.update();
+        }
+
+        // Date utility functions
+        function daysBetween(start, end) {
+            const s = new Date(start);
+            const e = new Date(end);
+            return Math.round((e - s) / (1000 * 60 * 60 * 24));
+        }
+
+        function addDays(dateStr, days) {
+            const d = new Date(dateStr);
+            d.setDate(d.getDate() + days);
+            return d.toISOString().split('T')[0];
+        }
+        {{end}}
 
         {{if gt (len .DailyStats) 1}}
         // Chart.js common options
@@ -577,14 +924,15 @@
 
         // Repository Activity Chart (Horizontal Bar)
         const repoActivityCtx = document.getElementById('repoActivityChart').getContext('2d');
-        new Chart(repoActivityCtx, {
+        let repoActivityChart = new Chart(repoActivityCtx, {
             type: 'bar',
             data: {
                 labels: [{{range $i, $s := .RepoStats}}{{if $i}},{{end}}"{{$s.Repository}}"{{end}}],
                 datasets: [{
                     label: 'PRs',
                     data: [{{range $i, $s := .RepoStats}}{{if $i}},{{end}}{{$s.Count}}{{end}}],
-                    backgroundColor: '#0b6e99'
+                    backgroundColor: '#0b6e99',
+                    barPercentage: 0.5
                 }]
             },
             options: {
@@ -600,6 +948,14 @@
                 }
             }
         });
+        {{end}}
+
+        {{if ne .OriginalStartDate .OriginalEndDate}}
+        // Initialize days count on page load
+        (function() {
+            const totalDays = daysBetween(originalStartDate, originalEndDate) + 1;
+            document.getElementById('daysCount').textContent = totalDays + ' days';
+        })();
         {{end}}
     </script>
     {{end}}

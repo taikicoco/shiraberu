@@ -61,12 +61,11 @@ func run() error {
 	spin.Success("Fetched PRs")
 
 	// Fetch previous period for comparison
+	var previousReport *pr.Report
 	spin = spinner.New("Fetching previous period...")
 	spin.Start()
-	duration := opts.EndDate.Sub(opts.StartDate)
-	prevEndDate := opts.StartDate.AddDate(0, 0, -1)
-	prevStartDate := prevEndDate.Add(-duration)
-	previousReport, err := fetcher.Fetch(opts.Org, prevStartDate, prevEndDate)
+	prevStartDate, prevEndDate := calcPreviousPeriod(opts.StartDate, opts.EndDate, opts.PeriodType)
+	previousReport, err = fetcher.Fetch(opts.Org, prevStartDate, prevEndDate)
 	if err != nil {
 		spin.Fail("Previous period unavailable")
 		previousReport = nil
@@ -108,6 +107,29 @@ func run() error {
 	}
 
 	return nil
+}
+
+func calcPreviousPeriod(startDate, endDate time.Time, periodType prompt.PeriodType) (time.Time, time.Time) {
+	switch periodType {
+	case prompt.PeriodTypeWeek:
+		// Previous week (Monday to Sunday)
+		prevEndDate := startDate.AddDate(0, 0, -1)
+		prevStartDate := prevEndDate.AddDate(0, 0, -6)
+		return prevStartDate, prevEndDate
+
+	case prompt.PeriodTypeMonth:
+		// Previous month (1st to last day)
+		prevEndDate := startDate.AddDate(0, 0, -1)
+		prevStartDate := time.Date(prevEndDate.Year(), prevEndDate.Month(), 1, 0, 0, 0, 0, prevEndDate.Location())
+		return prevStartDate, prevEndDate
+
+	default: // PeriodTypeCustom
+		// Same duration before
+		duration := endDate.Sub(startDate) + 24*time.Hour
+		prevEndDate := startDate.AddDate(0, 0, -1)
+		prevStartDate := prevEndDate.Add(-duration + 24*time.Hour)
+		return prevStartDate, prevEndDate
+	}
 }
 
 func runDemo() error {

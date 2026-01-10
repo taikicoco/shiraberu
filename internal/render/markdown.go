@@ -43,6 +43,14 @@ func RenderMarkdown(w io.Writer, report *pr.Report) error {
 			fmt.Fprintln(w)
 		}
 
+		if len(day.Draft) > 0 {
+			fmt.Fprintln(w, "### Draft")
+			for _, p := range day.Draft {
+				writePRLine(w, p)
+			}
+			fmt.Fprintln(w)
+		}
+
 		if len(day.Merged) > 0 {
 			fmt.Fprintln(w, "### Merged")
 			for _, p := range day.Merged {

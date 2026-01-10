@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -15,10 +14,19 @@ import (
 
 const backOption = "← Back"
 
+type PeriodType string
+
+const (
+	PeriodTypeWeek   PeriodType = "week"
+	PeriodTypeMonth  PeriodType = "month"
+	PeriodTypeCustom PeriodType = "custom"
+)
+
 type Options struct {
 	Org        string
 	StartDate  time.Time
 	EndDate    time.Time
+	PeriodType PeriodType
 	Format     string
 	OutputPath string
 }
@@ -58,8 +66,9 @@ func Run(cfg *config.Config) (*Options, error) {
 			var goBack bool
 			if idx == 0 {
 				opts.StartDate, opts.EndDate, goBack = promptSingleDay(reader)
+				opts.PeriodType = PeriodTypeCustom
 			} else {
-				opts.StartDate, opts.EndDate, goBack = promptDateRange(reader)
+				opts.StartDate, opts.EndDate, opts.PeriodType, goBack = promptDateRange(reader)
 			}
 			if goBack {
 				continue // Stay at stepPeriodMode
@@ -136,7 +145,7 @@ func promptSingleDay(reader *bufio.Reader) (time.Time, time.Time, bool) {
 	return date, date, false
 }
 
-func promptDateRange(reader *bufio.Reader) (time.Time, time.Time, bool) {
+func promptDateRange(reader *bufio.Reader) (time.Time, time.Time, PeriodType, bool) {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	weekdays := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
@@ -161,38 +170,62 @@ func promptDateRange(reader *bufio.Reader) (time.Time, time.Time, bool) {
 		fmt.Sprintf("Last week (%s %s - %s %s)", lastMonday.Format("1/2"), weekdays[lastMonday.Weekday()], lastSunday.Format("1/2"), weekdays[lastSunday.Weekday()]),
 		fmt.Sprintf("This month (%s - %s)", thisMonthStart.Format("1/2"), today.Format("1/2")),
 		fmt.Sprintf("Last month (%s - %s)", lastMonthStart.Format("1/2"), lastMonthEnd.Format("1/2")),
-		"Last N days",
+		"Select month",
 		"Enter dates",
 		backOption,
 	}
 	idx := promptSelect("Select range", options, 0)
 
 	if idx == 6 { // Back
-		return time.Time{}, time.Time{}, true
+		return time.Time{}, time.Time{}, "", true
 	}
 
 	var start, end time.Time
+	var periodType PeriodType
 	switch idx {
 	case 0: // This week
 		start, end = thisMonday, today
+		periodType = PeriodTypeWeek
 	case 1: // Last week
 		start, end = lastMonday, lastSunday
+		periodType = PeriodTypeWeek
 	case 2: // This month
 		start, end = thisMonthStart, today
+		periodType = PeriodTypeMonth
 	case 3: // Last month
 		start, end = lastMonthStart, lastMonthEnd
-	case 4: // Last N days
-		n := promptNumber(reader, "How many days?", 7)
-		start = today.AddDate(0, 0, -n+1)
-		end = today
+		periodType = PeriodTypeMonth
+	case 4: // Select month
+		start, end = promptSelectMonth(today)
+		periodType = PeriodTypeMonth
 	case 5: // Enter dates
 		start = promptDate(reader, "Start date (YYYY-MM-DD)", today.AddDate(0, 0, -7))
 		end = promptDate(reader, "End date (YYYY-MM-DD)", today)
+		periodType = PeriodTypeCustom
 	}
 
 	// Confirm
 	start, end = confirmDateRange(reader, start, end)
-	return start, end, false
+	return start, end, periodType, false
+}
+
+func promptSelectMonth(today time.Time) (time.Time, time.Time) {
+	// Generate past 12 months
+	options := make([]string, 12)
+	months := make([]time.Time, 12)
+
+	for i := 0; i < 12; i++ {
+		monthStart := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, today.Location()).AddDate(0, -i, 0)
+		months[i] = monthStart
+		options[i] = monthStart.Format("2006-01")
+	}
+
+	idx := promptSelect("Select month", options, 0)
+
+	start := months[idx]
+	end := start.AddDate(0, 1, -1) // Last day of the month
+
+	return start, end
 }
 
 func confirmDateRange(reader *bufio.Reader, start, end time.Time) (time.Time, time.Time) {
@@ -224,15 +257,6 @@ func promptDate(reader *bufio.Reader, label string, defaultDate time.Time) time.
 		return defaultDate
 	}
 	return parsed
-}
-
-func promptNumber(reader *bufio.Reader, label string, defaultVal int) int {
-	input := promptText(reader, label, strconv.Itoa(defaultVal))
-	n, err := strconv.Atoi(input)
-	if err != nil || n < 1 {
-		return defaultVal
-	}
-	return n
 }
 
 func promptText(reader *bufio.Reader, label string, defaultVal string) string {
