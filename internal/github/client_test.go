@@ -1,8 +1,8 @@
 package github
 
 import (
-	"os"
-	"os/exec"
+	"errors"
+	"strings"
 	"testing"
 )
 
@@ -35,82 +35,54 @@ func TestClient_Username(t *testing.T) {
 	}
 }
 
-// fakeExecCommand returns a helper process command for mocking
-func fakeExecCommand(command string, args ...string) *exec.Cmd {
-	cs := []string{"-test.run=TestHelperProcess", "--", command}
-	cs = append(cs, args...)
-	cmd := exec.Command(os.Args[0], cs...)
-	cmd.Env = []string{"GO_WANT_HELPER_PROCESS=1"}
-	return cmd
+// MockExecutor はテスト用のCommandExecutor実装
+type MockExecutor struct {
+	responses map[string][]byte
+	errors    map[string]error
 }
 
-// TestHelperProcess is a helper process for mocking exec.Command
-func TestHelperProcess(t *testing.T) {
-	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
-		return
+// NewMockExecutor は新しいMockExecutorを作成する
+func NewMockExecutor() *MockExecutor {
+	return &MockExecutor{
+		responses: make(map[string][]byte),
+		errors:    make(map[string]error),
 	}
-	args := os.Args
-	for i, arg := range args {
-		if arg == "--" {
-			args = args[i+1:]
-			break
+}
+
+// SetResponse は指定コマンドへのレスポンスを設定する
+func (m *MockExecutor) SetResponse(cmdPattern string, response []byte) {
+	m.responses[cmdPattern] = response
+}
+
+// SetError は指定コマンドへのエラーを設定する
+func (m *MockExecutor) SetError(cmdPattern string, err error) {
+	m.errors[cmdPattern] = err
+}
+
+// Execute はモックされたコマンド実行
+func (m *MockExecutor) Execute(name string, args ...string) ([]byte, error) {
+	cmd := name + " " + strings.Join(args, " ")
+
+	for pattern, err := range m.errors {
+		if strings.Contains(cmd, pattern) {
+			return nil, err
 		}
-	}
-	if len(args) == 0 {
-		os.Exit(1)
 	}
 
-	// Mock responses based on command
-	switch {
-	case args[0] == "gh" && len(args) > 1 && args[1] == "api":
-		if len(args) > 2 && args[2] == "user" {
-			// Mock gh api user response
-			_, _ = os.Stdout.WriteString("testuser\n")
-			os.Exit(0)
-		}
-		if len(args) > 2 && args[2] == "graphql" {
-			// Mock gh api graphql response
-			response := `{
-				"data": {
-					"search": {
-						"pageInfo": {
-							"hasNextPage": false,
-							"endCursor": ""
-						},
-						"nodes": [
-							{
-								"title": "Test PR",
-								"url": "https://github.com/test/repo/pull/1",
-								"state": "OPEN",
-								"isDraft": false,
-								"createdAt": "2025-01-10T10:00:00Z",
-								"mergedAt": "",
-								"updatedAt": "2025-01-10T12:00:00Z",
-								"additions": 100,
-								"deletions": 50,
-								"changedFiles": 5,
-								"comments": {"totalCount": 3},
-								"repository": {"name": "test-repo"}
-							}
-						]
-					}
-				}
-			}`
-			_, _ = os.Stdout.WriteString(response)
-			os.Exit(0)
+	for pattern, response := range m.responses {
+		if strings.Contains(cmd, pattern) {
+			return response, nil
 		}
 	}
-	os.Exit(1)
+
+	return nil, errors.New("no mock response for: " + cmd)
 }
 
 func TestNewClient(t *testing.T) {
-	// Save and restore original execCommand
-	origExecCommand := execCommand
-	defer func() { execCommand = origExecCommand }()
+	mock := NewMockExecutor()
+	mock.SetResponse("gh api user", []byte("testuser\n"))
 
-	execCommand = fakeExecCommand
-
-	client, err := NewClient()
+	client, err := NewClient(WithExecutor(mock))
 	if err != nil {
 		t.Fatalf("NewClient() failed: %v", err)
 	}
@@ -119,14 +91,61 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
+func TestNewClient_EmptyUsername(t *testing.T) {
+	mock := NewMockExecutor()
+	mock.SetResponse("gh api user", []byte("\n"))
+
+	_, err := NewClient(WithExecutor(mock))
+	if err == nil {
+		t.Fatal("NewClient() should fail with empty username")
+	}
+	if !strings.Contains(err.Error(), "empty username") {
+		t.Errorf("Error should mention empty username, got: %v", err)
+	}
+}
+
+func TestNewClient_APIError(t *testing.T) {
+	mock := NewMockExecutor()
+	mock.SetError("gh api user", errors.New("API error"))
+
+	_, err := NewClient(WithExecutor(mock))
+	if err == nil {
+		t.Fatal("NewClient() should fail on API error")
+	}
+}
+
 func TestClient_SearchPRs(t *testing.T) {
-	// Save and restore original execCommand
-	origExecCommand := execCommand
-	defer func() { execCommand = origExecCommand }()
+	graphQLResponse := `{
+		"data": {
+			"search": {
+				"pageInfo": {
+					"hasNextPage": false,
+					"endCursor": ""
+				},
+				"nodes": [
+					{
+						"title": "Test PR",
+						"url": "https://github.com/test/repo/pull/1",
+						"state": "OPEN",
+						"isDraft": false,
+						"createdAt": "2025-01-10T10:00:00Z",
+						"mergedAt": "",
+						"updatedAt": "2025-01-10T12:00:00Z",
+						"additions": 100,
+						"deletions": 50,
+						"changedFiles": 5,
+						"comments": {"totalCount": 3},
+						"repository": {"name": "test-repo"}
+					}
+				]
+			}
+		}
+	}`
 
-	execCommand = fakeExecCommand
+	mock := NewMockExecutor()
+	mock.SetResponse("graphql", []byte(graphQLResponse))
 
-	client := &Client{username: "testuser"}
+	client := &Client{username: "testuser", executor: mock}
 	prs, err := client.SearchPRs("test-org", "is:pr", "created:2025-01-01..2025-01-31")
 	if err != nil {
 		t.Fatalf("SearchPRs() failed: %v", err)
@@ -157,17 +176,93 @@ func TestClient_SearchPRs(t *testing.T) {
 	}
 }
 
-func TestGetUsername(t *testing.T) {
-	origExecCommand := execCommand
-	defer func() { execCommand = origExecCommand }()
+func TestClient_SearchPRs_Pagination(t *testing.T) {
+	firstResponse := `{
+		"data": {
+			"search": {
+				"pageInfo": {
+					"hasNextPage": true,
+					"endCursor": "cursor123"
+				},
+				"nodes": [
+					{
+						"title": "PR 1",
+						"url": "https://github.com/test/repo/pull/1",
+						"state": "OPEN",
+						"isDraft": false,
+						"createdAt": "2025-01-10T10:00:00Z",
+						"updatedAt": "2025-01-10T12:00:00Z",
+						"additions": 10,
+						"deletions": 5,
+						"changedFiles": 1,
+						"comments": {"totalCount": 1},
+						"repository": {"name": "test-repo"}
+					}
+				]
+			}
+		}
+	}`
+	secondResponse := `{
+		"data": {
+			"search": {
+				"pageInfo": {
+					"hasNextPage": false,
+					"endCursor": ""
+				},
+				"nodes": [
+					{
+						"title": "PR 2",
+						"url": "https://github.com/test/repo/pull/2",
+						"state": "MERGED",
+						"isDraft": false,
+						"createdAt": "2025-01-11T10:00:00Z",
+						"mergedAt": "2025-01-12T10:00:00Z",
+						"updatedAt": "2025-01-12T12:00:00Z",
+						"additions": 20,
+						"deletions": 10,
+						"changedFiles": 2,
+						"comments": {"totalCount": 2},
+						"repository": {"name": "test-repo"}
+					}
+				]
+			}
+		}
+	}`
 
-	execCommand = fakeExecCommand
+	callCount := 0
+	mock := &PaginationMockExecutor{
+		responses: [][]byte{[]byte(firstResponse), []byte(secondResponse)},
+		callCount: &callCount,
+	}
 
-	username, err := getUsername()
+	client := &Client{username: "testuser", executor: mock}
+	prs, err := client.SearchPRs("test-org", "is:pr", "created:2025-01-01..2025-01-31")
 	if err != nil {
-		t.Fatalf("getUsername() failed: %v", err)
+		t.Fatalf("SearchPRs() failed: %v", err)
 	}
-	if username != "testuser" {
-		t.Errorf("username: got %q, want %q", username, "testuser")
+
+	if len(prs) != 2 {
+		t.Fatalf("len(prs): got %d, want 2", len(prs))
 	}
+	if prs[0].Title != "PR 1" {
+		t.Errorf("prs[0].Title: got %q, want %q", prs[0].Title, "PR 1")
+	}
+	if prs[1].Title != "PR 2" {
+		t.Errorf("prs[1].Title: got %q, want %q", prs[1].Title, "PR 2")
+	}
+}
+
+// PaginationMockExecutor はページネーションテスト用のモック
+type PaginationMockExecutor struct {
+	responses [][]byte
+	callCount *int
+}
+
+func (m *PaginationMockExecutor) Execute(name string, args ...string) ([]byte, error) {
+	idx := *m.callCount
+	if idx >= len(m.responses) {
+		return nil, errors.New("no more mock responses")
+	}
+	*m.callCount++
+	return m.responses[idx], nil
 }

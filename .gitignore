@@ -6,3 +6,4 @@ output/
 
 # Environment
 .env
+coverage.*

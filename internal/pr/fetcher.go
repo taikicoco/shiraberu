@@ -5,7 +5,14 @@ import (
 	"time"
 
 	"github.com/taikicoco/shiraberu/internal/github"
+	"github.com/taikicoco/shiraberu/internal/timezone"
 )
+
+// PRSearcher はPR検索機能を抽象化するインターフェース
+type PRSearcher interface {
+	Username() string
+	SearchPRs(org string, query string, dateFilter string) ([]github.PullRequest, error)
+}
 
 type DailyPRs struct {
 	Date     time.Time
@@ -20,24 +27,23 @@ type Report struct {
 	StartDate   time.Time
 	EndDate     time.Time
 	Org         string
+	Username    string
 	Days        []DailyPRs
 }
 
 type Fetcher struct {
-	client github.PRSearcher
+	client PRSearcher
 }
 
-func NewFetcher(client github.PRSearcher) *Fetcher {
+func NewFetcher(client PRSearcher) *Fetcher {
 	return &Fetcher{client: client}
 }
 
-func (f *Fetcher) Fetch(org string, startDate, endDate time.Time) (*Report, error) {
-	username := f.client.Username()
+func (f *Fetcher) Fetch(org, username string, startDate, endDate time.Time) (*Report, error) {
 
 	// JST timezone for date range
-	jst := time.FixedZone("JST", 9*60*60)
-	startTime := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, jst)
-	endTime := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 0, jst)
+	startTime := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, timezone.JST)
+	endTime := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 0, timezone.JST)
 
 	dateRange := startTime.Format(time.RFC3339) + ".." + endTime.Format(time.RFC3339)
 
@@ -66,13 +72,13 @@ func (f *Fetcher) Fetch(org string, startDate, endDate time.Time) (*Report, erro
 		StartDate:   startDate,
 		EndDate:     endDate,
 		Org:         org,
+		Username:    username,
 		Days:        days,
 	}, nil
 }
 
 func groupByDate(opened, merged, reviewed []github.PullRequest) []DailyPRs {
 	dateMap := make(map[string]*DailyPRs)
-	jst := time.FixedZone("JST", 9*60*60)
 
 	addPR := func(pr github.PullRequest, category string) {
 		date := pr.CreatedAt
@@ -84,11 +90,11 @@ func groupByDate(opened, merged, reviewed []github.PullRequest) []DailyPRs {
 		}
 
 		// UTCからJSTに変換してからグループ化
-		dateJST := date.In(jst)
+		dateJST := date.In(timezone.JST)
 		dateStr := dateJST.Format("2006-01-02")
 		if _, ok := dateMap[dateStr]; !ok {
 			dateMap[dateStr] = &DailyPRs{
-				Date: time.Date(dateJST.Year(), dateJST.Month(), dateJST.Day(), 0, 0, 0, 0, jst),
+				Date: time.Date(dateJST.Year(), dateJST.Month(), dateJST.Day(), 0, 0, 0, 0, timezone.JST),
 			}
 		}
 

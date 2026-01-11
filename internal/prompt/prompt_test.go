@@ -3,6 +3,8 @@ package prompt
 import (
 	"testing"
 	"time"
+
+	"github.com/taikicoco/shiraberu/internal/period"
 )
 
 func TestGenerateFilename(t *testing.T) {
@@ -67,7 +69,7 @@ func TestOptions_Struct(t *testing.T) {
 		Org:        "test-org",
 		StartDate:  time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:    time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC),
-		PeriodType: PeriodTypeMonth,
+		PeriodType: period.TypeMonth,
 		Format:     "html",
 		OutputPath: "/path/to/output.html",
 	}
@@ -78,20 +80,8 @@ func TestOptions_Struct(t *testing.T) {
 	if opts.Format != "html" {
 		t.Errorf("Format: got %q, want %q", opts.Format, "html")
 	}
-	if opts.PeriodType != PeriodTypeMonth {
-		t.Errorf("PeriodType: got %q, want %q", opts.PeriodType, PeriodTypeMonth)
-	}
-}
-
-func TestPeriodTypeConstants(t *testing.T) {
-	if PeriodTypeWeek != "week" {
-		t.Errorf("PeriodTypeWeek: got %q, want %q", PeriodTypeWeek, "week")
-	}
-	if PeriodTypeMonth != "month" {
-		t.Errorf("PeriodTypeMonth: got %q, want %q", PeriodTypeMonth, "month")
-	}
-	if PeriodTypeCustom != "custom" {
-		t.Errorf("PeriodTypeCustom: got %q, want %q", PeriodTypeCustom, "custom")
+	if opts.PeriodType != period.TypeMonth {
+		t.Errorf("PeriodType: got %q, want %q", opts.PeriodType, period.TypeMonth)
 	}
 }
 

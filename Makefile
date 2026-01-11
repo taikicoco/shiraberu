@@ -1,4 +1,4 @@
-.PHONY: build test run demo fmt lint fix clean
+.PHONY: build test test-v coverage vet run demo fmt lint fix check clean
 
 # Build
 build:
@@ -7,6 +7,18 @@ build:
 # Test
 test:
 	go test ./...
+
+test-v:
+	go test -v ./...
+
+coverage:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"
+
+# Vet
+vet:
+	go vet ./...
 
 run:
 	go run .
@@ -29,7 +41,10 @@ fix:
 	goimports -w .
 	golangci-lint run --fix
 
+# Check all (vet + lint + test)
+check: vet lint test
+
 # Clean
 clean:
-	rm -f shiraberu
+	rm -f shiraberu coverage.out coverage.html
 	rm -rf output/

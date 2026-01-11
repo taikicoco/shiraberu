@@ -1,0 +1,91 @@
+{{/* PR item component */}}
+{{define "pr-item"}}
+<li class="pr-item">
+    <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
+    <div class="pr-meta">
+        <span class="pr-repo">{{.Repository}}</span>
+        {{if .IsDraft}}
+        <span class="state state-draft">Draft</span>
+        {{else if eq .State "merged"}}
+        <span class="state state-merged">Merged</span>
+        {{else if eq .State "open"}}
+        <span class="state state-open">Open</span>
+        {{else}}
+        <span class="state state-closed">Closed</span>
+        {{end}}
+        <span class="pr-stats">
+            <span class="stat-add">+{{.Additions}}</span>
+            <span class="stat-del">−{{.Deletions}}</span>
+            {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
+        </span>
+    </div>
+</li>
+{{end}}
+
+{{/* PR item with fixed state (for opened/draft/merged categories) */}}
+{{define "pr-item-fixed-state"}}
+<li class="pr-item">
+    <a href="{{.PR.URL}}" class="pr-link" target="_blank">{{.PR.Title}}</a>
+    <div class="pr-meta">
+        <span class="pr-repo">{{.PR.Repository}}</span>
+        <span class="state state-{{.StateClass}}">{{.StateLabel}}</span>
+        <span class="pr-stats">
+            <span class="stat-add">+{{.PR.Additions}}</span>
+            <span class="stat-del">−{{.PR.Deletions}}</span>
+            {{if .PR.Comments}}<span class="stat-comments">💬 {{.PR.Comments}}</span>{{end}}
+        </span>
+    </div>
+</li>
+{{end}}
+
+{{/* Summary item component */}}
+{{define "summary-item"}}
+<div class="summary-item">
+    <span class="summary-value {{.Class}}">{{.Value}}</span>
+    {{if .HasDiff}}
+    <span class="summary-diff {{.DiffClass}}">
+        {{if gt .Diff 0}}↑ +{{.Diff}}{{else if lt .Diff 0}}↓ {{.Diff}}{{else}}→ 0{{end}}
+    </span>
+    {{end}}
+    <span class="summary-label">{{.Label}}</span>
+</div>
+{{end}}
+
+{{/* Category section component */}}
+{{define "category"}}
+{{if .PRs}}
+<div class="category">
+    <div class="category-title {{.Class}}">{{.Title}}</div>
+    <ul class="pr-list">
+        {{range .PRs}}
+        <li class="pr-item">
+            <a href="{{.URL}}" class="pr-link" target="_blank">{{.Title}}</a>
+            <div class="pr-meta">
+                <span class="pr-repo">{{.Repository}}</span>
+                <span class="state state-{{$.StateClass}}">{{$.StateLabel}}</span>
+                <span class="pr-stats">
+                    <span class="stat-add">+{{.Additions}}</span>
+                    <span class="stat-del">−{{.Deletions}}</span>
+                    {{if .Comments}}<span class="stat-comments">💬 {{.Comments}}</span>{{end}}
+                </span>
+            </div>
+        </li>
+        {{end}}
+    </ul>
+</div>
+{{end}}
+{{end}}
+
+{{/* Reviewed category (dynamic state based on PR) */}}
+{{define "category-reviewed"}}
+{{if .}}
+<div class="category">
+    <div class="category-title reviewed">Reviewed</div>
+    <ul class="pr-list">
+        {{range .}}
+        {{template "pr-item" .}}
+        {{end}}
+    </ul>
+</div>
+{{end}}
+{{end}}
