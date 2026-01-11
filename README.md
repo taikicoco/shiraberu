@@ -34,4 +34,4 @@ go install github.com/taikicoco/shiraberu@latest
 ```
 shiraberu
 ```
-[godoc](https://pkg.go.dev/github.com/taikicoco/shiraberu)
+- [godoc](https://pkg.go.dev/github.com/taikicoco/shiraberu)

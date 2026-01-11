@@ -8,6 +8,7 @@ import (
 
 	"github.com/taikicoco/shiraberu/internal/github"
 	"github.com/taikicoco/shiraberu/internal/pr"
+	"github.com/taikicoco/shiraberu/internal/timezone"
 )
 
 var repos = []string{
@@ -53,25 +54,24 @@ const (
 
 // GenerateReport generates demo data for the given date range
 func GenerateReport(startDate, endDate time.Time) (*pr.Report, *pr.Report) {
-	jst := time.FixedZone("JST", 9*60*60)
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	// Generate current period
-	report := generatePeriodReport(startDate, endDate, jst, r, "demo-org")
+	report := generatePeriodReport(startDate, endDate, r, "demo-org")
 
 	// Generate previous period for comparison (previous month)
 	prevEndDate := startDate.AddDate(0, 0, -1)
 	prevStartDate := time.Date(prevEndDate.Year(), prevEndDate.Month(), 1, 0, 0, 0, 0, prevEndDate.Location())
-	previousReport := generatePeriodReport(prevStartDate, prevEndDate, jst, r, "demo-org")
+	previousReport := generatePeriodReport(prevStartDate, prevEndDate, r, "demo-org")
 
 	return report, previousReport
 }
 
-func generatePeriodReport(startDate, endDate time.Time, jst *time.Location, r *rand.Rand, org string) *pr.Report {
+func generatePeriodReport(startDate, endDate time.Time, r *rand.Rand, org string) *pr.Report {
 	days := []pr.DailyPRs{}
 
 	for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
-		date := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, jst)
+		date := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, timezone.JST)
 
 		// Skip some days randomly (weekends have less activity)
 		weekday := date.Weekday()
@@ -125,6 +125,7 @@ func generatePeriodReport(startDate, endDate time.Time, jst *time.Location, r *r
 		StartDate:   startDate,
 		EndDate:     endDate,
 		Org:         org,
+		Username:    "demo-user",
 		Days:        days,
 	}
 }

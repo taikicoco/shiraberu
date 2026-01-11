@@ -8,6 +8,7 @@ import (
 
 	"github.com/taikicoco/shiraberu/internal/github"
 	"github.com/taikicoco/shiraberu/internal/pr"
+	"github.com/taikicoco/shiraberu/internal/timezone"
 )
 
 func TestCalcSummary(t *testing.T) {
@@ -67,13 +68,12 @@ func TestCalcSummary(t *testing.T) {
 }
 
 func TestCalcDailyStats(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
 	report := &pr.Report{
-		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
-		EndDate:   time.Date(2025, 1, 3, 0, 0, 0, 0, jst), // 3日間の期間
+		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 1, 3, 0, 0, 0, 0, timezone.JST), // 3日間の期間
 		Days: []pr.DailyPRs{
 			{
-				Date: time.Date(2025, 1, 2, 0, 0, 0, 0, jst),
+				Date: time.Date(2025, 1, 2, 0, 0, 0, 0, timezone.JST),
 				Opened: []github.PullRequest{
 					{Additions: 100, Deletions: 50},
 				},
@@ -82,7 +82,7 @@ func TestCalcDailyStats(t *testing.T) {
 				},
 			},
 			{
-				Date: time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
+				Date: time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
 				Opened: []github.PullRequest{
 					{Additions: 50, Deletions: 20},
 					{Additions: 30, Deletions: 10},
@@ -142,23 +142,22 @@ func TestCalcDailyStats(t *testing.T) {
 }
 
 func TestCalcWeeklyStats(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
 	report := &pr.Report{
 		Days: []pr.DailyPRs{
 			{
-				Date: time.Date(2025, 1, 6, 0, 0, 0, 0, jst), // Week 2 (Monday)
+				Date: time.Date(2025, 1, 6, 0, 0, 0, 0, timezone.JST), // Week 2 (Monday)
 				Opened: []github.PullRequest{
 					{}, {},
 				},
 			},
 			{
-				Date: time.Date(2025, 1, 7, 0, 0, 0, 0, jst), // Week 2 (Tuesday)
+				Date: time.Date(2025, 1, 7, 0, 0, 0, 0, timezone.JST), // Week 2 (Tuesday)
 				Opened: []github.PullRequest{
 					{},
 				},
 			},
 			{
-				Date: time.Date(2025, 1, 1, 0, 0, 0, 0, jst), // Week 1 (Wednesday)
+				Date: time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST), // Week 1 (Wednesday)
 				Merged: []github.PullRequest{
 					{}, {}, {},
 				},
@@ -214,23 +213,22 @@ func TestCalcWeeklyStats(t *testing.T) {
 }
 
 func TestCalcMonthlyStats(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
 	report := &pr.Report{
 		Days: []pr.DailyPRs{
 			{
-				Date: time.Date(2025, 1, 15, 0, 0, 0, 0, jst),
+				Date: time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
 				Opened: []github.PullRequest{
 					{}, {},
 				},
 			},
 			{
-				Date: time.Date(2025, 1, 20, 0, 0, 0, 0, jst),
+				Date: time.Date(2025, 1, 20, 0, 0, 0, 0, timezone.JST),
 				Opened: []github.PullRequest{
 					{},
 				},
 			},
 			{
-				Date: time.Date(2024, 12, 25, 0, 0, 0, 0, jst),
+				Date: time.Date(2024, 12, 25, 0, 0, 0, 0, timezone.JST),
 				Merged: []github.PullRequest{
 					{}, {}, {},
 				},
@@ -379,11 +377,10 @@ func TestCalcSummary_Empty(t *testing.T) {
 }
 
 func TestCalcDailyStats_Empty(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
 	// StartDate > EndDate の場合は0件
 	report := &pr.Report{
-		StartDate: time.Date(2025, 1, 2, 0, 0, 0, 0, jst),
-		EndDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
+		StartDate: time.Date(2025, 1, 2, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
 		Days:      []pr.DailyPRs{},
 	}
 
@@ -395,11 +392,10 @@ func TestCalcDailyStats_Empty(t *testing.T) {
 }
 
 func TestCalcDailyStats_SingleDay(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
 	// 同じ日の場合は1件（PRなしでも0として表示）
 	report := &pr.Report{
-		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
-		EndDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
+		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
 		Days:      []pr.DailyPRs{},
 	}
 
@@ -427,19 +423,19 @@ func TestFormatPeriod(t *testing.T) {
 			name:  "same day",
 			start: time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
 			end:   time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
-			want:  "2025-01-15",
+			want:  "2025/01/15",
 		},
 		{
 			name:  "different days",
 			start: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 			end:   time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC),
-			want:  "2025-01-01 - 2025-01-31",
+			want:  "2025/01/01 〜 2025/01/31",
 		},
 		{
 			name:  "across months",
 			start: time.Date(2024, 12, 15, 0, 0, 0, 0, time.UTC),
 			end:   time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
-			want:  "2024-12-15 - 2025-01-15",
+			want:  "2024/12/15 〜 2025/01/15",
 		},
 	}
 
@@ -475,15 +471,14 @@ func TestCapitalize(t *testing.T) {
 }
 
 func TestRenderHTML(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
 	report := &pr.Report{
-		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, jst),
-		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
-		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, jst),
+		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, timezone.JST),
+		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
 		Org:         "test-org",
 		Days: []pr.DailyPRs{
 			{
-				Date: time.Date(2025, 1, 10, 0, 0, 0, 0, jst),
+				Date: time.Date(2025, 1, 10, 0, 0, 0, 0, timezone.JST),
 				Opened: []github.PullRequest{
 					{
 						Title:      "Add feature",
@@ -521,11 +516,10 @@ func TestRenderHTML(t *testing.T) {
 }
 
 func TestRenderHTML_Empty(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
 	report := &pr.Report{
-		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, jst),
-		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
-		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, jst),
+		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, timezone.JST),
+		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
 		Org:         "test-org",
 		Days:        []pr.DailyPRs{},
 	}
@@ -543,15 +537,14 @@ func TestRenderHTML_Empty(t *testing.T) {
 }
 
 func TestRenderMarkdown(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
 	report := &pr.Report{
-		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, jst),
-		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
-		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, jst),
+		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, timezone.JST),
+		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
 		Org:         "test-org",
 		Days: []pr.DailyPRs{
 			{
-				Date: time.Date(2025, 1, 10, 0, 0, 0, 0, jst),
+				Date: time.Date(2025, 1, 10, 0, 0, 0, 0, timezone.JST),
 				Opened: []github.PullRequest{
 					{
 						Title:      "Add feature",
@@ -601,11 +594,10 @@ func TestRenderMarkdown(t *testing.T) {
 }
 
 func TestRenderMarkdown_Empty(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
 	report := &pr.Report{
-		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, jst),
-		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
-		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, jst),
+		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, timezone.JST),
+		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
 		Org:         "test-org",
 		Days:        []pr.DailyPRs{},
 	}

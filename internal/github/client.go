@@ -6,49 +6,80 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	apperrors "github.com/taikicoco/shiraberu/internal/errors"
 )
 
-// execCommand is a variable for mocking exec.Command in tests
-var execCommand = exec.Command
+// CommandExecutor はコマンド実行を抽象化するインターフェース
+type CommandExecutor interface {
+	Execute(name string, args ...string) ([]byte, error)
+}
 
-// PRSearcher is an interface for searching PRs (for mocking in tests)
-type PRSearcher interface {
-	Username() string
-	SearchPRs(org string, query string, dateFilter string) ([]PullRequest, error)
+// DefaultExecutor は実際のコマンドを実行するデフォルト実装
+type DefaultExecutor struct{}
+
+// Execute はシェルコマンドを実行し、標準出力を返す
+func (e *DefaultExecutor) Execute(name string, args ...string) ([]byte, error) {
+	cmd := exec.Command(name, args...)
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("command failed: %w\n%s", err, string(exitErr.Stderr))
+		}
+		return nil, err
+	}
+	return out, nil
 }
 
 type Client struct {
 	username string
+	executor CommandExecutor
 }
 
-// Ensure Client implements PRSearcher
-var _ PRSearcher = (*Client)(nil)
+// ClientOption はClientの設定オプション
+type ClientOption func(*Client)
 
-func NewClient() (*Client, error) {
-	username, err := getUsername()
+// WithExecutor はCommandExecutorを設定するオプション
+func WithExecutor(e CommandExecutor) ClientOption {
+	return func(c *Client) {
+		c.executor = e
+	}
+}
+
+func NewClient(opts ...ClientOption) (*Client, error) {
+	c := &Client{
+		executor: &DefaultExecutor{},
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	username, err := c.getUsername()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitHub username: %w", err)
 	}
-	return &Client{username: username}, nil
+	c.username = username
+	return c, nil
 }
 
 func (c *Client) Username() string {
 	return c.username
 }
 
-func getUsername() (string, error) {
-	cmd := execCommand("gh", "api", "user", "--jq", ".login")
-	out, err := cmd.Output()
+func (c *Client) getUsername() (string, error) {
+	out, err := c.executor.Execute("gh", "api", "user", "--jq", ".login")
 	if err != nil {
 		return "", err
 	}
 	username := strings.TrimSpace(string(out))
 	if username == "" {
-		return "", fmt.Errorf("empty username returned from GitHub API")
+		return "", apperrors.ErrEmptyUsername
 	}
 	return username, nil
 }
 
+// searchQuery is the GraphQL query for searching PRs.
+// Uses 100 results per page for pagination.
 const searchQuery = `
 query($q: String!, $cursor: String) {
   search(query: $q, type: ISSUE, first: 100, after: $cursor) {
@@ -124,12 +155,8 @@ func (c *Client) SearchPRs(org string, query string, dateFilter string) ([]PullR
 			args = append(args, "-f", "cursor="+cursor)
 		}
 
-		cmd := execCommand("gh", args...)
-		out, err := cmd.Output()
+		out, err := c.executor.Execute("gh", args...)
 		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				return nil, fmt.Errorf("gh api graphql failed: %w\n%s", err, string(exitErr.Stderr))
-			}
 			return nil, fmt.Errorf("gh api graphql failed: %w", err)
 		}
 

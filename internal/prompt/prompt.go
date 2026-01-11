@@ -3,6 +3,7 @@ package prompt
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,23 +11,21 @@ import (
 
 	"github.com/manifoldco/promptui"
 	"github.com/taikicoco/shiraberu/internal/config"
+	apperrors "github.com/taikicoco/shiraberu/internal/errors"
+	"github.com/taikicoco/shiraberu/internal/period"
 )
 
-const backOption = "← Back"
-
-type PeriodType string
-
 const (
-	PeriodTypeWeek   PeriodType = "week"
-	PeriodTypeMonth  PeriodType = "month"
-	PeriodTypeCustom PeriodType = "custom"
+	backOption   = "← Back"
+	monthsToShow = 12
 )
 
 type Options struct {
 	Org        string
+	Username   string
 	StartDate  time.Time
 	EndDate    time.Time
-	PeriodType PeriodType
+	PeriodType period.Type
 	Format     string
 	OutputPath string
 }
@@ -35,13 +34,14 @@ type step int
 
 const (
 	stepOrg step = iota
+	stepUsername
 	stepPeriodMode
 	stepPeriodDetail
 	stepFormat
 	stepDone
 )
 
-func Run(cfg *config.Config) (*Options, error) {
+func Run(cfg *config.Config, defaultUsername string) (*Options, error) {
 	reader := bufio.NewReader(os.Stdin)
 	opts := &Options{}
 
@@ -52,7 +52,14 @@ func Run(cfg *config.Config) (*Options, error) {
 		case stepOrg:
 			opts.Org = promptText(reader, "Organization", cfg.Org)
 			if opts.Org == "" {
-				return nil, fmt.Errorf("organization is required")
+				return nil, apperrors.ErrOrgRequired
+			}
+			currentStep = stepUsername
+
+		case stepUsername:
+			opts.Username = promptText(reader, "GitHub username", defaultUsername)
+			if opts.Username == "" {
+				opts.Username = defaultUsername
 			}
 			currentStep = stepPeriodMode
 
@@ -60,13 +67,13 @@ func Run(cfg *config.Config) (*Options, error) {
 			modes := []string{"Single day", "Date range", backOption}
 			idx := promptSelect("Period type", modes, 0)
 			if idx == 2 { // Back
-				currentStep = stepOrg
+				currentStep = stepUsername
 				continue
 			}
 			var goBack bool
 			if idx == 0 {
 				opts.StartDate, opts.EndDate, goBack = promptSingleDay(reader)
-				opts.PeriodType = PeriodTypeCustom
+				opts.PeriodType = period.TypeCustom
 			} else {
 				opts.StartDate, opts.EndDate, opts.PeriodType, goBack = promptDateRange(reader)
 			}
@@ -145,7 +152,7 @@ func promptSingleDay(reader *bufio.Reader) (time.Time, time.Time, bool) {
 	return date, date, false
 }
 
-func promptDateRange(reader *bufio.Reader) (time.Time, time.Time, PeriodType, bool) {
+func promptDateRange(reader *bufio.Reader) (time.Time, time.Time, period.Type, bool) {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	weekdays := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
@@ -181,27 +188,27 @@ func promptDateRange(reader *bufio.Reader) (time.Time, time.Time, PeriodType, bo
 	}
 
 	var start, end time.Time
-	var periodType PeriodType
+	var periodType period.Type
 	switch idx {
 	case 0: // This week
 		start, end = thisMonday, today
-		periodType = PeriodTypeWeek
+		periodType = period.TypeWeek
 	case 1: // Last week
 		start, end = lastMonday, lastSunday
-		periodType = PeriodTypeWeek
+		periodType = period.TypeWeek
 	case 2: // This month
 		start, end = thisMonthStart, today
-		periodType = PeriodTypeMonth
+		periodType = period.TypeMonth
 	case 3: // Last month
 		start, end = lastMonthStart, lastMonthEnd
-		periodType = PeriodTypeMonth
+		periodType = period.TypeMonth
 	case 4: // Select month
 		start, end = promptSelectMonth(today)
-		periodType = PeriodTypeMonth
+		periodType = period.TypeMonth
 	case 5: // Enter dates
 		start = promptDate(reader, "Start date (YYYY-MM-DD)", today.AddDate(0, 0, -7))
 		end = promptDate(reader, "End date (YYYY-MM-DD)", today)
-		periodType = PeriodTypeCustom
+		periodType = period.TypeCustom
 	}
 
 	// Confirm
@@ -210,11 +217,11 @@ func promptDateRange(reader *bufio.Reader) (time.Time, time.Time, PeriodType, bo
 }
 
 func promptSelectMonth(today time.Time) (time.Time, time.Time) {
-	// Generate past 12 months
-	options := make([]string, 12)
-	months := make([]time.Time, 12)
+	// Generate past months
+	options := make([]string, monthsToShow)
+	months := make([]time.Time, monthsToShow)
 
-	for i := 0; i < 12; i++ {
+	for i := 0; i < monthsToShow; i++ {
 		monthStart := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, today.Location()).AddDate(0, -i, 0)
 		months[i] = monthStart
 		options[i] = monthStart.Format("2006-01")
@@ -232,7 +239,11 @@ func confirmDateRange(reader *bufio.Reader, start, end time.Time) (time.Time, ti
 	fmt.Printf("\nPeriod: %s - %s\n", start.Format("2006-01-02"), end.Format("2006-01-02"))
 	fmt.Print("? Confirm? [Enter: OK / s: change start / e: change end]: ")
 
-	input, _ := reader.ReadString('\n')
+	input, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		// On error, return current values
+		return start, end
+	}
 	input = strings.TrimSpace(strings.ToLower(input))
 
 	switch input {
@@ -266,7 +277,11 @@ func promptText(reader *bufio.Reader, label string, defaultVal string) string {
 		fmt.Printf("? %s: ", label)
 	}
 
-	input, _ := reader.ReadString('\n')
+	input, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		// On error, return default value
+		return defaultVal
+	}
 	input = strings.TrimSpace(input)
 
 	if input == "" {

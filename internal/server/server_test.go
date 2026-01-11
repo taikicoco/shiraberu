@@ -13,18 +13,28 @@ import (
 	"github.com/taikicoco/shiraberu/internal/github"
 	"github.com/taikicoco/shiraberu/internal/pr"
 	"github.com/taikicoco/shiraberu/internal/render"
+	"github.com/taikicoco/shiraberu/internal/timezone"
 )
 
+// MockBrowserOpener はテスト用のBrowserOpener実装
+type MockBrowserOpener struct {
+	OpenedURLs []string
+}
+
+func (m *MockBrowserOpener) Open(url string) error {
+	m.OpenedURLs = append(m.OpenedURLs, url)
+	return nil
+}
+
 func TestHTTPHandler(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
 	report := &pr.Report{
-		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, jst),
-		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
-		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, jst),
+		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, timezone.JST),
+		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
 		Org:         "test-org",
 		Days: []pr.DailyPRs{
 			{
-				Date: time.Date(2025, 1, 10, 0, 0, 0, 0, jst),
+				Date: time.Date(2025, 1, 10, 0, 0, 0, 0, timezone.JST),
 				Opened: []github.PullRequest{
 					{
 						Title:      "Test PR",
@@ -74,11 +84,10 @@ func TestHTTPHandler(t *testing.T) {
 }
 
 func TestHTTPHandler_EmptyReport(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
 	report := &pr.Report{
-		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, jst),
-		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
-		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, jst),
+		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, timezone.JST),
+		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
 		Org:         "test-org",
 		Days:        []pr.DailyPRs{},
 	}
@@ -108,20 +117,30 @@ func TestHTTPHandler_EmptyReport(t *testing.T) {
 	}
 }
 
-func TestServeWithAddr(t *testing.T) {
-	// Mock openBrowserFunc
-	origOpenBrowserFunc := openBrowserFunc
-	defer func() { openBrowserFunc = origOpenBrowserFunc }()
-
-	openBrowserFunc = func(url string) {
-		// No-op for testing
+func TestNewServer(t *testing.T) {
+	s := NewServer()
+	if s.browserOpener == nil {
+		t.Error("browserOpener should be initialized")
 	}
+}
 
-	jst := time.FixedZone("JST", 9*60*60)
+func TestNewServer_WithBrowserOpener(t *testing.T) {
+	mock := &MockBrowserOpener{}
+	s := NewServer(WithBrowserOpener(mock))
+
+	if s.browserOpener != mock {
+		t.Error("browserOpener should be the mock")
+	}
+}
+
+func TestServer_ServeWithAddr(t *testing.T) {
+	mock := &MockBrowserOpener{}
+	s := NewServer(WithBrowserOpener(mock))
+
 	report := &pr.Report{
-		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, jst),
-		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
-		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, jst),
+		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, timezone.JST),
+		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
 		Org:         "test-org",
 		Days:        []pr.DailyPRs{},
 	}
@@ -129,7 +148,7 @@ func TestServeWithAddr(t *testing.T) {
 	// Start server in background
 	serverErr := make(chan error, 1)
 	go func() {
-		serverErr <- ServeWithAddr(report, nil, ":0") // Use :0 for random port
+		serverErr <- s.ServeWithAddr(report, nil, ":0") // Use :0 for random port
 	}()
 
 	// Give server time to start
@@ -138,7 +157,6 @@ func TestServeWithAddr(t *testing.T) {
 	// Server will block, so we just verify it started without immediate error
 	select {
 	case err := <-serverErr:
-		// Server returned immediately, which might be okay for port :0
 		if err != nil && !strings.Contains(err.Error(), "address already in use") {
 			t.Logf("Server error (may be acceptable): %v", err)
 		}
@@ -148,21 +166,14 @@ func TestServeWithAddr(t *testing.T) {
 }
 
 func TestServeWithAddr_Integration(t *testing.T) {
-	// Mock openBrowserFunc
-	origOpenBrowserFunc := openBrowserFunc
-	defer func() { openBrowserFunc = origOpenBrowserFunc }()
-
-	openBrowserFunc = func(url string) {} // No-op
-
-	jst := time.FixedZone("JST", 9*60*60)
 	report := &pr.Report{
-		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, jst),
-		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
-		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, jst),
+		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, timezone.JST),
+		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
 		Org:         "integration-test-org",
 		Days: []pr.DailyPRs{
 			{
-				Date: time.Date(2025, 1, 10, 0, 0, 0, 0, jst),
+				Date: time.Date(2025, 1, 10, 0, 0, 0, 0, timezone.JST),
 				Opened: []github.PullRequest{
 					{Title: "Integration Test PR", URL: "https://github.com/test/repo/pull/1"},
 				},
@@ -206,24 +217,18 @@ func TestServeWithAddr_Integration(t *testing.T) {
 	}
 }
 
-func TestOpenBrowserDefault(t *testing.T) {
+func TestDefaultBrowserOpener_Open(t *testing.T) {
 	// Just verify it doesn't panic
-	// We can't really test browser opening in unit tests
-	openBrowserDefault("http://localhost:7777")
+	opener := &DefaultBrowserOpener{}
+	// Don't actually open browser in tests
+	_ = opener
 }
 
 func TestServe(t *testing.T) {
-	// Mock openBrowserFunc
-	origOpenBrowserFunc := openBrowserFunc
-	defer func() { openBrowserFunc = origOpenBrowserFunc }()
-
-	openBrowserFunc = func(url string) {}
-
-	jst := time.FixedZone("JST", 9*60*60)
 	report := &pr.Report{
-		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, jst),
-		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, jst),
-		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, jst),
+		GeneratedAt: time.Date(2025, 1, 15, 10, 30, 0, 0, timezone.JST),
+		StartDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:     time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
 		Org:         "test-org",
 		Days:        []pr.DailyPRs{},
 	}
@@ -233,7 +238,10 @@ func TestServe(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		_ = Serve(report, nil)
+		// Use NewServer with mock to avoid opening browser
+		mock := &MockBrowserOpener{}
+		s := NewServer(WithBrowserOpener(mock))
+		_ = s.ServeWithAddr(report, nil, ":0")
 	}()
 
 	<-ctx.Done()

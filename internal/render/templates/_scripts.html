@@ -1,0 +1,545 @@
+{{define "scripts"}}
+<script>
+    // Raw PR data for filtering
+    const allDays = {{json .DaysJSON}};
+    const originalStartDate = "{{.OriginalStartDate}}";
+    const originalEndDate = "{{.OriginalEndDate}}";
+    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    // Toggle all details
+    function toggleAll(open) {
+        document.querySelectorAll('details.day').forEach(d => d.open = open);
+    }
+
+    // Repository filter
+    let selectedRepos = []; // empty = all repos
+
+    function getSelectedRepos() {
+        const select = document.getElementById('repoSelect');
+        if (!select) return [];
+        const value = select.value;
+        return value ? [value] : [];
+    }
+
+    function filterPRsByRepo(prs, repos) {
+        if (repos.length === 0) return prs;
+        return prs.filter(pr => repos.includes(pr.repository));
+    }
+
+    function filterDaysByRepo(days, repos) {
+        if (repos.length === 0) return days;
+        return days.map(day => ({
+            ...day,
+            opened: filterPRsByRepo(day.opened, repos),
+            draft: filterPRsByRepo(day.draft, repos),
+            merged: filterPRsByRepo(day.merged, repos),
+            reviewed: filterPRsByRepo(day.reviewed, repos)
+        }));
+    }
+
+    // Initialize repo filter
+    const repoSelect = document.getElementById('repoSelect');
+    if (repoSelect) {
+        repoSelect.addEventListener('change', () => {
+            selectedRepos = getSelectedRepos();
+            applyFilters();
+        });
+    }
+
+    {{if eq .OriginalStartDate .OriginalEndDate}}
+    // Single day mode - simplified repo filter
+    function applyFilters() {
+        // Filter PR list by repository
+        document.querySelectorAll('.pr-item').forEach(item => {
+            const repoEl = item.querySelector('.pr-repo');
+            if (repoEl) {
+                const repo = repoEl.textContent;
+                const visible = selectedRepos.length === 0 || selectedRepos.includes(repo);
+                item.style.display = visible ? '' : 'none';
+            }
+        });
+        // Update summary for single day
+        if (selectedRepos.length > 0) {
+            const filteredDays = filterDaysByRepo(allDays, selectedRepos);
+            const summary = { opened: 0, draft: 0, merged: 0, reviewed: 0, additions: 0, deletions: 0 };
+            filteredDays.forEach(day => {
+                summary.opened += day.opened.length;
+                summary.draft += day.draft.length;
+                summary.merged += day.merged.length;
+                summary.reviewed += day.reviewed.length;
+                day.merged.forEach(pr => {
+                    summary.additions += pr.additions;
+                    summary.deletions += pr.deletions;
+                });
+            });
+            document.querySelector('.summary-value.opened').textContent = summary.opened;
+            document.querySelector('.summary-value.draft').textContent = summary.draft;
+            document.querySelector('.summary-value.merged').textContent = summary.merged;
+            document.querySelector('.summary-value.reviewed').textContent = summary.reviewed;
+            document.querySelector('.summary-value.changes').innerHTML = `<span class="stat-add">+${summary.additions}</span> <span class="stat-del">−${summary.deletions}</span>`;
+        }
+    }
+    {{end}}
+
+    {{if ne .OriginalStartDate .OriginalEndDate}}
+    // Save original summary HTML for full range comparison
+    const originalSummaryHTML = document.getElementById('summaryContainer').innerHTML;
+
+    // Use server-generated stats (same as chart)
+    const weeks = [{{range $i, $s := .WeeklyStats}}{{if $i}},{{end}}{label: "{{$s.Week}}", start: "{{$s.StartDate}}", end: "{{$s.EndDate}}"}{{end}}];
+    const months = [{{range $i, $s := .MonthlyStats}}{{if $i}},{{end}}{label: "{{$s.Month}}", start: "{{$s.StartDate}}", end: "{{$s.EndDate}}"}{{end}}];
+
+    // Generate day options
+    function generateDays(start, end) {
+        const result = [];
+        let current = new Date(start);
+        const endDate = new Date(end);
+        while (current <= endDate) {
+            const dateStr = current.toISOString().split('T')[0];
+            result.push({ value: dateStr, label: dateStr });
+            current.setDate(current.getDate() + 1);
+        }
+        return result;
+    }
+    const days = generateDays(originalStartDate, originalEndDate);
+
+    // Initialize selects
+    function initSelects() {
+        const startSelect = document.getElementById('filterStartDate');
+        const endSelect = document.getElementById('filterEndDate');
+        days.forEach(d => {
+            startSelect.add(new Option(d.label, d.value));
+            endSelect.add(new Option(d.label, d.value));
+        });
+        endSelect.value = originalEndDate;
+
+        startSelect.onchange = endSelect.onchange = () => {
+            const start = startSelect.value;
+            const end = endSelect.value;
+            if (start <= end) updateView(start, end);
+        };
+
+        const weekSelect = document.getElementById('weekSelect');
+        if (weekSelect && weeks.length > 1) {
+            weeks.forEach((w, i) => {
+                weekSelect.add(new Option(w.label, i));
+            });
+            weekSelect.value = weeks.length - 1;
+            weekSelect.onchange = () => {
+                const w = weeks[weekSelect.value];
+                updateView(w.start, w.end);
+            };
+        }
+
+        const monthSelect = document.getElementById('monthSelect');
+        if (monthSelect && months.length > 1) {
+            months.forEach((m, i) => {
+                monthSelect.add(new Option(m.label, i));
+            });
+            monthSelect.value = months.length - 1;
+            monthSelect.onchange = () => {
+                const m = months[monthSelect.value];
+                updateView(m.start, m.end);
+            };
+        }
+    }
+    initSelects();
+
+    // Tab switching
+    document.querySelectorAll('.filter-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+
+            const mode = this.dataset.mode;
+            document.getElementById('dayMode').style.display = mode === 'day' ? 'flex' : 'none';
+            const weekMode = document.getElementById('weekMode');
+            const monthMode = document.getElementById('monthMode');
+            if (weekMode) weekMode.style.display = mode === 'week' ? 'flex' : 'none';
+            if (monthMode) monthMode.style.display = mode === 'month' ? 'flex' : 'none';
+
+            // Apply current selection
+            if (mode === 'day') {
+                const start = document.getElementById('filterStartDate').value;
+                const end = document.getElementById('filterEndDate').value;
+                updateView(start, end);
+            } else if (mode === 'week') {
+                const w = weeks[document.getElementById('weekSelect').value];
+                updateView(w.start, w.end);
+            } else {
+                const m = months[document.getElementById('monthSelect').value];
+                updateView(m.start, m.end);
+            }
+        });
+    });
+
+    // Store current date range
+    let currentStartDate = originalStartDate;
+    let currentEndDate = originalEndDate;
+
+    function applyFilters() {
+        updateView(currentStartDate, currentEndDate);
+    }
+
+    function updateView(startDate, endDate) {
+        currentStartDate = startDate;
+        currentEndDate = endDate;
+
+        // Filter days by date
+        let filteredDays = allDays.filter(day => day.date >= startDate && day.date <= endDate);
+
+        // Filter by repository
+        filteredDays = filterDaysByRepo(filteredDays, selectedRepos);
+
+        // Check if it's full range with no repo filter
+        const isFullRange = startDate === originalStartDate && endDate === originalEndDate && selectedRepos.length === 0;
+
+        if (isFullRange) {
+            // Restore original summary with server-calculated comparison
+            document.getElementById('summaryContainer').innerHTML = originalSummaryHTML;
+        } else {
+            // Calculate summary
+            const summary = calcFilteredSummary(filteredDays);
+
+            // Calculate previous period summary for diff
+            const dayCount = daysBetween(startDate, endDate) + 1;
+            const prevEndDate = addDays(startDate, -1);
+            const prevStartDate = addDays(prevEndDate, -(dayCount - 1));
+            let prevDays = allDays.filter(day => day.date >= prevStartDate && day.date <= prevEndDate);
+            prevDays = filterDaysByRepo(prevDays, selectedRepos);
+            const prevSummary = calcFilteredSummary(prevDays);
+            const hasPrevious = prevDays.length > 0;
+
+            // Update summary display
+            updateSummaryDisplay(summary, prevSummary, hasPrevious);
+        }
+
+        // Update PR list visibility
+        updatePRListVisibility(startDate, endDate, selectedRepos);
+
+        // Update charts if exist
+        if (typeof activityChart !== 'undefined') {
+            updateActivityChart(filteredDays);
+        }
+        if (typeof repoActivityChart !== 'undefined') {
+            updateRepoActivityChart(filteredDays);
+        }
+
+        // Update days count
+        const totalDays = daysBetween(startDate, endDate) + 1;
+        document.getElementById('daysCount').textContent = `${totalDays} days`;
+    }
+
+    function calcFilteredSummary(days) {
+        let opened = 0, draft = 0, merged = 0, reviewed = 0, additions = 0, deletions = 0;
+        days.forEach(day => {
+            opened += day.opened.length;
+            draft += day.draft.length;
+            merged += day.merged.length;
+            reviewed += day.reviewed.length;
+            day.merged.forEach(pr => {
+                additions += pr.additions;
+                deletions += pr.deletions;
+            });
+        });
+        return { opened, draft, merged, reviewed, additions, deletions };
+    }
+
+    function updateSummaryDisplay(summary, prevSummary, hasPrevious) {
+        const container = document.getElementById('summaryContainer');
+        const diffHtml = (current, prev, has) => {
+            if (!has) return '';
+            const diff = current - prev;
+            const cls = diff > 0 ? 'positive' : diff < 0 ? 'negative' : 'neutral';
+            const arrow = diff > 0 ? '↑ +' : diff < 0 ? '↓ ' : '→ ';
+            return `<span class="summary-diff ${cls}">${arrow}${diff}</span>`;
+        };
+
+        container.innerHTML = `
+            <div class="summary-item">
+                <span class="summary-value opened">${summary.opened}</span>
+                ${diffHtml(summary.opened, prevSummary.opened, hasPrevious)}
+                <span class="summary-label">Opened</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-value draft">${summary.draft}</span>
+                ${diffHtml(summary.draft, prevSummary.draft, hasPrevious)}
+                <span class="summary-label">Draft</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-value merged">${summary.merged}</span>
+                ${diffHtml(summary.merged, prevSummary.merged, hasPrevious)}
+                <span class="summary-label">Merged</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-value reviewed">${summary.reviewed}</span>
+                ${diffHtml(summary.reviewed, prevSummary.reviewed, hasPrevious)}
+                <span class="summary-label">Reviewed</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-value changes"><span class="stat-add">+${summary.additions}</span> <span class="stat-del">−${summary.deletions}</span></span>
+                <span class="summary-label">Merged</span>
+            </div>
+        `;
+    }
+
+    function updatePRListVisibility(startDate, endDate, repos) {
+        document.querySelectorAll('details.day').forEach(detail => {
+            const header = detail.querySelector('.day-header');
+            if (!header) return;
+
+            const dateMatch = header.textContent.match(/(\d{4}-\d{2}-\d{2})/);
+            if (!dateMatch) return;
+
+            const date = dateMatch[1];
+            const inDateRange = date >= startDate && date <= endDate;
+
+            if (!inDateRange) {
+                detail.style.display = 'none';
+                return;
+            }
+
+            // Filter individual PR items by repository
+            let visiblePRs = 0;
+            detail.querySelectorAll('.pr-item').forEach(item => {
+                const repoEl = item.querySelector('.pr-repo');
+                if (repoEl) {
+                    const repo = repoEl.textContent;
+                    const visible = repos.length === 0 || repos.includes(repo);
+                    item.style.display = visible ? '' : 'none';
+                    if (visible) visiblePRs++;
+                }
+            });
+
+            // Hide day if no PRs visible
+            detail.style.display = visiblePRs > 0 ? '' : 'none';
+
+            // Update PR count in header
+            const countEl = detail.querySelector('.day-count');
+            if (countEl) {
+                countEl.textContent = `${visiblePRs} PRs`;
+            }
+        });
+    }
+
+    // Store current filtered days for chart tab switching
+    let currentFilteredDays = allDays;
+
+    function updateActivityChart(filteredDays) {
+        currentFilteredDays = filteredDays;
+        const data = getChartData(filteredDays, currentChartPeriod);
+
+        activityChart.data.labels = data.labels;
+        activityChart.data.datasets[0].data = data.opened;
+        activityChart.data.datasets[1].data = data.draft;
+        activityChart.data.datasets[2].data = data.merged;
+        activityChart.data.datasets[3].data = data.reviewed;
+        activityChart.update();
+    }
+
+    function updateRepoActivityChart(filteredDays) {
+        // Calculate repo stats from filtered data
+        const repoCount = {};
+        filteredDays.forEach(day => {
+            [...day.opened, ...day.draft, ...day.merged, ...day.reviewed].forEach(pr => {
+                repoCount[pr.repository] = (repoCount[pr.repository] || 0) + 1;
+            });
+        });
+
+        // Sort by count descending
+        const sorted = Object.entries(repoCount)
+            .sort((a, b) => b[1] - a[1]);
+
+        repoActivityChart.data.labels = sorted.map(([repo]) => repo);
+        repoActivityChart.data.datasets[0].data = sorted.map(([, count]) => count);
+        repoActivityChart.update();
+    }
+
+    // Date utility functions
+    function daysBetween(start, end) {
+        const s = new Date(start);
+        const e = new Date(end);
+        return Math.round((e - s) / (1000 * 60 * 60 * 24));
+    }
+
+    function addDays(dateStr, days) {
+        const d = new Date(dateStr);
+        d.setDate(d.getDate() + days);
+        return d.toISOString().split('T')[0];
+    }
+    {{end}}
+
+    {{if gt (len .DailyStats) 1}}
+    // Chart.js common options
+    Chart.defaults.font.family = 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+    Chart.defaults.font.size = 11;
+    Chart.defaults.color = '#787774';
+
+    // Track current chart aggregation mode
+    let currentChartPeriod = 'daily';
+
+    // Aggregate filtered data by week
+    function aggregateByWeek(days) {
+        const weekMap = {};
+        days.forEach(day => {
+            const d = new Date(day.date);
+            const dayOfWeek = d.getDay();
+            const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+            const monday = new Date(d);
+            monday.setDate(d.getDate() + mondayOffset);
+            const sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
+            const weekLabel = `${monday.getMonth()+1}/${monday.getDate()} 〜 ${sunday.getMonth()+1}/${sunday.getDate()}`;
+            const weekKey = monday.toISOString().split('T')[0];
+
+            if (!weekMap[weekKey]) {
+                weekMap[weekKey] = { label: weekLabel, opened: 0, draft: 0, merged: 0, reviewed: 0 };
+            }
+            weekMap[weekKey].opened += day.opened.length;
+            weekMap[weekKey].draft += day.draft.length;
+            weekMap[weekKey].merged += day.merged.length;
+            weekMap[weekKey].reviewed += day.reviewed.length;
+        });
+
+        const keys = Object.keys(weekMap).sort();
+        return {
+            labels: keys.map(k => weekMap[k].label),
+            opened: keys.map(k => weekMap[k].opened),
+            draft: keys.map(k => weekMap[k].draft),
+            merged: keys.map(k => weekMap[k].merged),
+            reviewed: keys.map(k => weekMap[k].reviewed)
+        };
+    }
+
+    // Aggregate filtered data by month
+    function aggregateByMonth(days) {
+        const monthMap = {};
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        days.forEach(day => {
+            const d = new Date(day.date);
+            const monthKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+            const monthLabel = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+
+            if (!monthMap[monthKey]) {
+                monthMap[monthKey] = { label: monthLabel, opened: 0, draft: 0, merged: 0, reviewed: 0 };
+            }
+            monthMap[monthKey].opened += day.opened.length;
+            monthMap[monthKey].draft += day.draft.length;
+            monthMap[monthKey].merged += day.merged.length;
+            monthMap[monthKey].reviewed += day.reviewed.length;
+        });
+
+        const keys = Object.keys(monthMap).sort();
+        return {
+            labels: keys.map(k => monthMap[k].label),
+            opened: keys.map(k => monthMap[k].opened),
+            draft: keys.map(k => monthMap[k].draft),
+            merged: keys.map(k => monthMap[k].merged),
+            reviewed: keys.map(k => monthMap[k].reviewed)
+        };
+    }
+
+    // Get aggregated chart data based on period
+    function getChartData(days, period) {
+        if (period === 'weekly') {
+            return aggregateByWeek(days);
+        } else if (period === 'monthly') {
+            return aggregateByMonth(days);
+        } else {
+            // daily
+            const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date));
+            return {
+                labels: sorted.map(d => d.date),
+                opened: sorted.map(d => d.opened.length),
+                draft: sorted.map(d => d.draft.length),
+                merged: sorted.map(d => d.merged.length),
+                reviewed: sorted.map(d => d.reviewed.length)
+            };
+        }
+    }
+
+    // Activity Chart - initialize with daily data
+    const initialChartData = getChartData(allDays, 'daily');
+    const activityCtx = document.getElementById('activityChart').getContext('2d');
+    let activityChart = new Chart(activityCtx, {
+        type: 'line',
+        data: {
+            labels: initialChartData.labels,
+            datasets: [
+                { label: 'Opened', data: initialChartData.opened, borderColor: '#0f7b6c', pointStyle: 'circle', pointRadius: 4, pointHoverRadius: 6 },
+                { label: 'Draft', data: initialChartData.draft, borderColor: '#787774', pointStyle: 'rect', pointRadius: 4, pointHoverRadius: 6, borderDash: [5, 5] },
+                { label: 'Merged', data: initialChartData.merged, borderColor: '#6940a5', pointStyle: 'triangle', pointRadius: 5, pointHoverRadius: 7 },
+                { label: 'Reviewed', data: initialChartData.reviewed, borderColor: '#0b6e99', pointStyle: 'rectRot', pointRadius: 5, pointHoverRadius: 7, borderDash: [5, 5] }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { grid: { display: false } },
+                y: { beginAtZero: true, ticks: { stepSize: 1 } }
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { boxWidth: 12, padding: 8, usePointStyle: true }
+                }
+            }
+        }
+    });
+
+    // Chart tab switching - uses filtered data
+    document.querySelectorAll('.chart-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const period = this.dataset.period;
+            document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+
+            currentChartPeriod = period;
+            const data = getChartData(currentFilteredDays, period);
+            activityChart.data.labels = data.labels;
+            activityChart.data.datasets[0].data = data.opened;
+            activityChart.data.datasets[1].data = data.draft;
+            activityChart.data.datasets[2].data = data.merged;
+            activityChart.data.datasets[3].data = data.reviewed;
+            activityChart.update();
+        });
+    });
+
+    // Repository Activity Chart (Horizontal Bar)
+    const repoActivityCtx = document.getElementById('repoActivityChart').getContext('2d');
+    let repoActivityChart = new Chart(repoActivityCtx, {
+        type: 'bar',
+        data: {
+            labels: [{{range $i, $s := .RepoStats}}{{if $i}},{{end}}"{{$s.Repository}}"{{end}}],
+            datasets: [{
+                label: 'PRs',
+                data: [{{range $i, $s := .RepoStats}}{{if $i}},{{end}}{{$s.Count}}{{end}}],
+                backgroundColor: '#0b6e99',
+                barPercentage: 0.5
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { beginAtZero: true, ticks: { stepSize: 1 } },
+                y: { grid: { display: false } }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+    {{end}}
+
+    {{if ne .OriginalStartDate .OriginalEndDate}}
+    // Initialize days count on page load
+    (function() {
+        const totalDays = daysBetween(originalStartDate, originalEndDate) + 1;
+        document.getElementById('daysCount').textContent = totalDays + ' days';
+    })();
+    {{end}}
+</script>
+{{end}}

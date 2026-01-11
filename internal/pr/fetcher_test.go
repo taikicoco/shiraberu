@@ -1,33 +1,33 @@
 package pr
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/taikicoco/shiraberu/internal/github"
+	"github.com/taikicoco/shiraberu/internal/timezone"
 )
 
 func TestGroupByDate(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
-
 	// Create test PRs with different dates
 	opened := []github.PullRequest{
 		{
 			Title:     "PR 1",
-			CreatedAt: time.Date(2025, 1, 10, 10, 0, 0, 0, jst),
+			CreatedAt: time.Date(2025, 1, 10, 10, 0, 0, 0, timezone.JST),
 		},
 		{
 			Title:     "PR 2",
-			CreatedAt: time.Date(2025, 1, 10, 15, 0, 0, 0, jst),
+			CreatedAt: time.Date(2025, 1, 10, 15, 0, 0, 0, timezone.JST),
 		},
 		{
 			Title:     "PR 3 (draft)",
-			CreatedAt: time.Date(2025, 1, 11, 9, 0, 0, 0, jst),
+			CreatedAt: time.Date(2025, 1, 11, 9, 0, 0, 0, timezone.JST),
 			IsDraft:   true,
 		},
 	}
 
-	mergedAt := time.Date(2025, 1, 10, 18, 0, 0, 0, jst)
+	mergedAt := time.Date(2025, 1, 10, 18, 0, 0, 0, timezone.JST)
 	merged := []github.PullRequest{
 		{
 			Title:    "Merged PR",
@@ -38,7 +38,7 @@ func TestGroupByDate(t *testing.T) {
 	reviewed := []github.PullRequest{
 		{
 			Title:     "Reviewed PR",
-			UpdatedAt: time.Date(2025, 1, 11, 14, 0, 0, 0, jst),
+			UpdatedAt: time.Date(2025, 1, 11, 14, 0, 0, 0, timezone.JST),
 		},
 	}
 
@@ -127,30 +127,17 @@ func (m *MockPRSearcher) SearchPRs(org string, query string, dateFilter string) 
 	}
 
 	// Return different PRs based on query
-	if contains(query, "is:open") {
+	if strings.Contains(query, "is:open") {
 		return m.openedPRs, nil
 	}
-	if contains(query, "is:merged") {
+	if strings.Contains(query, "is:merged") {
 		return m.mergedPRs, nil
 	}
-	if contains(query, "reviewed-by:") {
+	if strings.Contains(query, "reviewed-by:") {
 		return m.reviewPRs, nil
 	}
 
 	return nil, nil
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func TestNewFetcher(t *testing.T) {
@@ -162,10 +149,9 @@ func TestNewFetcher(t *testing.T) {
 }
 
 func TestFetcher_Fetch(t *testing.T) {
-	jst := time.FixedZone("JST", 9*60*60)
-	createdAt := time.Date(2025, 1, 10, 10, 0, 0, 0, jst)
-	mergedAt := time.Date(2025, 1, 10, 18, 0, 0, 0, jst)
-	updatedAt := time.Date(2025, 1, 11, 14, 0, 0, 0, jst)
+	createdAt := time.Date(2025, 1, 10, 10, 0, 0, 0, timezone.JST)
+	mergedAt := time.Date(2025, 1, 10, 18, 0, 0, 0, timezone.JST)
+	updatedAt := time.Date(2025, 1, 11, 14, 0, 0, 0, timezone.JST)
 
 	mock := &MockPRSearcher{
 		username: "testuser",
@@ -194,10 +180,10 @@ func TestFetcher_Fetch(t *testing.T) {
 
 	fetcher := NewFetcher(mock)
 
-	startDate := time.Date(2025, 1, 1, 0, 0, 0, 0, jst)
-	endDate := time.Date(2025, 1, 31, 0, 0, 0, 0, jst)
+	startDate := time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST)
+	endDate := time.Date(2025, 1, 31, 0, 0, 0, 0, timezone.JST)
 
-	report, err := fetcher.Fetch("test-org", startDate, endDate)
+	report, err := fetcher.Fetch("test-org", "testuser", startDate, endDate)
 	if err != nil {
 		t.Fatalf("Fetch() failed: %v", err)
 	}
@@ -247,7 +233,7 @@ func TestFetcher_Fetch_Error(t *testing.T) {
 	startDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	_, err := fetcher.Fetch("test-org", startDate, endDate)
+	_, err := fetcher.Fetch("test-org", "testuser", startDate, endDate)
 	if err == nil {
 		t.Error("Fetch() should return error")
 	}

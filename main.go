@@ -1,14 +1,27 @@
+// Shiraberu is a CLI tool that generates pull request activity reports
+// from GitHub. It fetches merged PRs for a specified user and organization,
+// then renders the results as HTML or Markdown reports.
+//
+// Usage:
+//
+//	shiraberu [flags]
+//
+// Flags:
+//
+//	-demo    Run with demo data (no GitHub API calls)
 package main
 
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
 	"github.com/taikicoco/shiraberu/internal/config"
 	"github.com/taikicoco/shiraberu/internal/demo"
 	"github.com/taikicoco/shiraberu/internal/github"
+	"github.com/taikicoco/shiraberu/internal/period"
 	"github.com/taikicoco/shiraberu/internal/pr"
 	"github.com/taikicoco/shiraberu/internal/prompt"
 	"github.com/taikicoco/shiraberu/internal/render"
@@ -38,14 +51,15 @@ func run() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	opts, err := prompt.Run(cfg)
-	if err != nil {
-		return err
-	}
-
 	client, err := github.NewClient()
 	if err != nil {
 		return fmt.Errorf("failed to create GitHub client: %w", err)
+	}
+
+	defaultUsername := client.Username()
+	opts, err := prompt.Run(cfg, defaultUsername)
+	if err != nil {
+		return err
 	}
 
 	fetcher := pr.NewFetcher(client)
@@ -53,7 +67,7 @@ func run() error {
 	// Fetch current period with spinner
 	spin := spinner.New("Fetching PRs...")
 	spin.Start()
-	report, err := fetcher.Fetch(opts.Org, opts.StartDate, opts.EndDate)
+	report, err := fetcher.Fetch(opts.Org, opts.Username, opts.StartDate, opts.EndDate)
 	if err != nil {
 		spin.Fail("Failed to fetch PRs")
 		return fmt.Errorf("failed to fetch PRs: %w", err)
@@ -64,8 +78,8 @@ func run() error {
 	var previousReport *pr.Report
 	spin = spinner.New("Fetching previous period...")
 	spin.Start()
-	prevStartDate, prevEndDate := calcPreviousPeriod(opts.StartDate, opts.EndDate, opts.PeriodType)
-	previousReport, err = fetcher.Fetch(opts.Org, prevStartDate, prevEndDate)
+	prevStartDate, prevEndDate := period.CalcPrevious(opts.StartDate, opts.EndDate, opts.PeriodType)
+	previousReport, err = fetcher.Fetch(opts.Org, opts.Username, prevStartDate, prevEndDate)
 	if err != nil {
 		spin.Fail("Previous period unavailable")
 		previousReport = nil
@@ -76,60 +90,35 @@ func run() error {
 	switch opts.Format {
 	case "browser":
 		return server.Serve(report, previousReport)
-
 	case "html":
-		if opts.OutputPath == "" {
-			return render.RenderHTML(os.Stdout, report, previousReport)
-		}
-		f, err := os.Create(opts.OutputPath)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		if err := render.RenderHTML(f, report, previousReport); err != nil {
-			return err
-		}
-		fmt.Printf("✓ Saved to %s\n", opts.OutputPath)
-
+		return writeOutput(opts.OutputPath, func(w io.Writer) error {
+			return render.RenderHTML(w, report, previousReport)
+		})
 	default: // markdown
-		if opts.OutputPath == "" {
-			return render.RenderMarkdown(os.Stdout, report)
-		}
-		f, err := os.Create(opts.OutputPath)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		if err := render.RenderMarkdown(f, report); err != nil {
-			return err
-		}
-		fmt.Printf("✓ Saved to %s\n", opts.OutputPath)
+		return writeOutput(opts.OutputPath, func(w io.Writer) error {
+			return render.RenderMarkdown(w, report)
+		})
 	}
-
-	return nil
 }
 
-func calcPreviousPeriod(startDate, endDate time.Time, periodType prompt.PeriodType) (time.Time, time.Time) {
-	switch periodType {
-	case prompt.PeriodTypeWeek:
-		// Previous week (Monday to Sunday)
-		prevEndDate := startDate.AddDate(0, 0, -1)
-		prevStartDate := prevEndDate.AddDate(0, 0, -6)
-		return prevStartDate, prevEndDate
-
-	case prompt.PeriodTypeMonth:
-		// Previous month (1st to last day)
-		prevEndDate := startDate.AddDate(0, 0, -1)
-		prevStartDate := time.Date(prevEndDate.Year(), prevEndDate.Month(), 1, 0, 0, 0, 0, prevEndDate.Location())
-		return prevStartDate, prevEndDate
-
-	default: // PeriodTypeCustom
-		// Same duration before
-		duration := endDate.Sub(startDate) + 24*time.Hour
-		prevEndDate := startDate.AddDate(0, 0, -1)
-		prevStartDate := prevEndDate.Add(-duration + 24*time.Hour)
-		return prevStartDate, prevEndDate
+// writeOutput はレンダリング結果をファイルまたは標準出力に書き込む
+func writeOutput(path string, renderer func(io.Writer) error) error {
+	if path == "" {
+		return renderer(os.Stdout)
 	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := renderer(f); err != nil {
+		return err
+	}
+
+	fmt.Printf("✓ Saved to %s\n", path)
+	return nil
 }
 
 func runDemo() error {

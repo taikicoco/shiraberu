@@ -12,9 +12,9 @@ import (
 
 func formatPeriod(start, end time.Time) string {
 	if start.Equal(end) {
-		return start.Format("2006-01-02")
+		return start.Format("2006/01/02")
 	}
-	return start.Format("2006-01-02") + " - " + end.Format("2006-01-02")
+	return start.Format("2006/01/02") + " 〜 " + end.Format("2006/01/02")
 }
 
 func RenderMarkdown(w io.Writer, report *pr.Report) error {
