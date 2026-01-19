@@ -143,6 +143,8 @@ func TestCalcDailyStats(t *testing.T) {
 
 func TestCalcWeeklyStats(t *testing.T) {
 	report := &pr.Report{
+		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 1, 7, 0, 0, 0, 0, timezone.JST),
 		Days: []pr.DailyPRs{
 			{
 				Date: time.Date(2025, 1, 6, 0, 0, 0, 0, timezone.JST), // Week 2 (Monday)
@@ -214,6 +216,8 @@ func TestCalcWeeklyStats(t *testing.T) {
 
 func TestCalcMonthlyStats(t *testing.T) {
 	report := &pr.Report{
+		StartDate: time.Date(2024, 12, 25, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 1, 20, 0, 0, 0, 0, timezone.JST),
 		Days: []pr.DailyPRs{
 			{
 				Date: time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
@@ -616,8 +620,11 @@ func TestRenderMarkdown_Empty(t *testing.T) {
 }
 
 func TestCalcWeeklyStats_Empty(t *testing.T) {
+	// StartDate > EndDate の場合は0件
 	report := &pr.Report{
-		Days: []pr.DailyPRs{},
+		StartDate: time.Date(2025, 1, 2, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		Days:      []pr.DailyPRs{},
 	}
 
 	stats := calcWeeklyStats(report)
@@ -627,15 +634,109 @@ func TestCalcWeeklyStats_Empty(t *testing.T) {
 	}
 }
 
-func TestCalcMonthlyStats_Empty(t *testing.T) {
+func TestCalcWeeklyStats_WithGap(t *testing.T) {
+	// PRがない週も含まれることを確認
+	// Week 1: 2024-12-30 〜 2025-01-05
+	// Week 2: 2025-01-06 〜 2025-01-12 (PRなし)
+	// Week 3: 2025-01-13 〜 2025-01-19
 	report := &pr.Report{
-		Days: []pr.DailyPRs{},
+		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST),
+		Days: []pr.DailyPRs{
+			{
+				Date: time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST), // Week 1
+				Opened: []github.PullRequest{
+					{},
+				},
+			},
+			{
+				Date: time.Date(2025, 1, 15, 0, 0, 0, 0, timezone.JST), // Week 3
+				Merged: []github.PullRequest{
+					{},
+				},
+			},
+			// Week 2 (1/6-1/12) はPRなし
+		},
+	}
+
+	stats := calcWeeklyStats(report)
+
+	// 3週間すべて含まれる
+	if len(stats) != 3 {
+		t.Fatalf("len(stats): got %d, want 3", len(stats))
+	}
+
+	// Week 2 (PRなし週) のカウントは0
+	if stats[1].OpenedCount != 0 {
+		t.Errorf("stats[1].OpenedCount: got %d, want 0", stats[1].OpenedCount)
+	}
+	if stats[1].MergedCount != 0 {
+		t.Errorf("stats[1].MergedCount: got %d, want 0", stats[1].MergedCount)
+	}
+}
+
+func TestCalcMonthlyStats_Empty(t *testing.T) {
+	// StartDate > EndDate の場合は0件
+	report := &pr.Report{
+		StartDate: time.Date(2025, 1, 2, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		Days:      []pr.DailyPRs{},
 	}
 
 	stats := calcMonthlyStats(report)
 
 	if len(stats) != 0 {
 		t.Errorf("len(stats): got %d, want 0", len(stats))
+	}
+}
+
+func TestCalcMonthlyStats_WithGap(t *testing.T) {
+	// PRがない月も含まれることを確認
+	// Dec 2024, Jan 2025 (PRなし), Feb 2025
+	report := &pr.Report{
+		StartDate: time.Date(2024, 12, 15, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 2, 15, 0, 0, 0, 0, timezone.JST),
+		Days: []pr.DailyPRs{
+			{
+				Date: time.Date(2024, 12, 20, 0, 0, 0, 0, timezone.JST),
+				Opened: []github.PullRequest{
+					{},
+				},
+			},
+			{
+				Date: time.Date(2025, 2, 10, 0, 0, 0, 0, timezone.JST),
+				Merged: []github.PullRequest{
+					{},
+				},
+			},
+			// Jan 2025 はPRなし
+		},
+	}
+
+	stats := calcMonthlyStats(report)
+
+	// 3ヶ月すべて含まれる
+	if len(stats) != 3 {
+		t.Fatalf("len(stats): got %d, want 3", len(stats))
+	}
+
+	// 月順にソートされている
+	if stats[0].Month != "Dec 2024" {
+		t.Errorf("stats[0].Month: got %s, want Dec 2024", stats[0].Month)
+	}
+	if stats[1].Month != "Jan 2025" {
+		t.Errorf("stats[1].Month: got %s, want Jan 2025", stats[1].Month)
+	}
+	if stats[2].Month != "Feb 2025" {
+		t.Errorf("stats[2].Month: got %s, want Feb 2025", stats[2].Month)
+	}
+
+	// Jan 2025 (PRなし月) のカウントは0
+	if stats[1].OpenedCount != 0 {
+		t.Errorf("stats[1].OpenedCount: got %d, want 0", stats[1].OpenedCount)
+	}
+	if stats[1].MergedCount != 0 {
+		t.Errorf("stats[1].MergedCount: got %d, want 0", stats[1].MergedCount)
 	}
 }
 
@@ -648,5 +749,93 @@ func TestCalcRepoStats_Empty(t *testing.T) {
 
 	if len(stats) != 0 {
 		t.Errorf("len(stats): got %d, want 0", len(stats))
+	}
+}
+
+func TestConvertToDaysJSON(t *testing.T) {
+	report := &pr.Report{
+		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 1, 3, 0, 0, 0, 0, timezone.JST), // 3日間の期間
+		Days: []pr.DailyPRs{
+			{
+				Date: time.Date(2025, 1, 2, 0, 0, 0, 0, timezone.JST),
+				Opened: []github.PullRequest{
+					{Title: "PR1", Repository: "test/repo"},
+				},
+			},
+			// 1/1 と 1/3 はPRなし
+		},
+	}
+
+	days := convertToDaysJSON(report)
+
+	// 期間内の全日（1/1, 1/2, 1/3）が含まれる
+	if len(days) != 3 {
+		t.Fatalf("len(days): got %d, want 3", len(days))
+	}
+
+	// Should be sorted by date ascending
+	if days[0].Date != "2025-01-01" {
+		t.Errorf("days[0].Date: got %s, want 2025-01-01", days[0].Date)
+	}
+	if days[1].Date != "2025-01-02" {
+		t.Errorf("days[1].Date: got %s, want 2025-01-02", days[1].Date)
+	}
+	if days[2].Date != "2025-01-03" {
+		t.Errorf("days[2].Date: got %s, want 2025-01-03", days[2].Date)
+	}
+
+	// Check day without PRs (1/1) - should have empty slices
+	if len(days[0].Opened) != 0 {
+		t.Errorf("days[0].Opened: got %d, want 0", len(days[0].Opened))
+	}
+	if days[0].Opened == nil {
+		t.Error("days[0].Opened should be empty slice, not nil")
+	}
+
+	// Check day with PRs (1/2)
+	if len(days[1].Opened) != 1 {
+		t.Errorf("days[1].Opened: got %d, want 1", len(days[1].Opened))
+	}
+	if days[1].Opened[0].Title != "PR1" {
+		t.Errorf("days[1].Opened[0].Title: got %s, want PR1", days[1].Opened[0].Title)
+	}
+
+	// Check day without PRs (1/3) - should have empty slices
+	if len(days[2].Opened) != 0 {
+		t.Errorf("days[2].Opened: got %d, want 0", len(days[2].Opened))
+	}
+}
+
+func TestConvertToDaysJSON_Empty(t *testing.T) {
+	// StartDate > EndDate の場合は0件
+	report := &pr.Report{
+		StartDate: time.Date(2025, 1, 2, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		Days:      []pr.DailyPRs{},
+	}
+
+	days := convertToDaysJSON(report)
+
+	if len(days) != 0 {
+		t.Errorf("len(days): got %d, want 0", len(days))
+	}
+}
+
+func TestConvertToDaysJSON_SingleDay(t *testing.T) {
+	// 同じ日の場合は1件
+	report := &pr.Report{
+		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		EndDate:   time.Date(2025, 1, 1, 0, 0, 0, 0, timezone.JST),
+		Days:      []pr.DailyPRs{},
+	}
+
+	days := convertToDaysJSON(report)
+
+	if len(days) != 1 {
+		t.Fatalf("len(days): got %d, want 1", len(days))
+	}
+	if days[0].Date != "2025-01-01" {
+		t.Errorf("days[0].Date: got %s, want 2025-01-01", days[0].Date)
 	}
 }
