@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"io"
+	"sort"
 
 	"github.com/taikicoco/shiraberu/internal/github"
 	"github.com/taikicoco/shiraberu/internal/pr"
@@ -57,17 +58,42 @@ func RenderHTML(w io.Writer, report *pr.Report, previousReport *pr.Report) error
 }
 
 func convertToDaysJSON(report *pr.Report) []DayJSON {
-	var days []DayJSON
+	// 期間内の全日を含むマップを作成
+	dayMap := make(map[string]DayJSON)
+
+	// まず期間内の全日を空で初期化
+	for d := report.StartDate; !d.After(report.EndDate); d = d.AddDate(0, 0, 1) {
+		dateStr := d.Format("2006-01-02")
+		dayMap[dateStr] = DayJSON{
+			Date:     dateStr,
+			Opened:   []PRJSON{},
+			Draft:    []PRJSON{},
+			Merged:   []PRJSON{},
+			Reviewed: []PRJSON{},
+		}
+	}
+
+	// PRがある日のデータを埋める
 	for _, day := range report.Days {
-		d := DayJSON{
-			Date:     day.Date.Format("2006-01-02"),
+		dateStr := day.Date.Format("2006-01-02")
+		dayMap[dateStr] = DayJSON{
+			Date:     dateStr,
 			Opened:   convertPRsToJSON(day.Opened),
 			Draft:    convertPRsToJSON(day.Draft),
 			Merged:   convertPRsToJSON(day.Merged),
 			Reviewed: convertPRsToJSON(day.Reviewed),
 		}
-		days = append(days, d)
 	}
+
+	// スライスに変換してソート
+	days := make([]DayJSON, 0, len(dayMap))
+	for _, day := range dayMap {
+		days = append(days, day)
+	}
+	sort.Slice(days, func(i, j int) bool {
+		return days[i].Date < days[j].Date
+	})
+
 	return days
 }
 
