@@ -290,6 +290,11 @@ func TestCalcRepoStats(t *testing.T) {
 				},
 				Merged: []github.PullRequest{
 					{Repository: "repo-a"},
+					{Repository: "repo-a"},
+					{Repository: "repo-a"},
+					{Repository: "repo-b"},
+					{Repository: "repo-b"},
+					{Repository: "repo-c"},
 				},
 				Reviewed: []github.PullRequest{
 					{Repository: "repo-c"},
@@ -305,7 +310,7 @@ func TestCalcRepoStats(t *testing.T) {
 		t.Fatalf("len(stats): got %d, want 3", len(stats))
 	}
 
-	// Should be sorted by count descending
+	// Should be sorted by count descending (only Merged PRs are counted)
 	if stats[0].Repository != "repo-a" || stats[0].Count != 3 {
 		t.Errorf("stats[0]: got %s=%d, want repo-a=3", stats[0].Repository, stats[0].Count)
 	}

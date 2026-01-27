@@ -187,16 +187,7 @@ func calcMonthlyStats(report *pr.Report) []MonthlyStat {
 func calcRepoStats(report *pr.Report) []RepoStat {
 	repoCount := make(map[string]int)
 	for _, day := range report.Days {
-		for _, p := range day.Opened {
-			repoCount[p.Repository]++
-		}
-		for _, p := range day.Draft {
-			repoCount[p.Repository]++
-		}
 		for _, p := range day.Merged {
-			repoCount[p.Repository]++
-		}
-		for _, p := range day.Reviewed {
 			repoCount[p.Repository]++
 		}
 	}
