@@ -541,5 +541,22 @@
         document.getElementById('daysCount').textContent = totalDays + ' days';
     })();
     {{end}}
+
+    // Download functionality
+    document.getElementById('downloadBtn').addEventListener('click', function() {
+        const html = document.documentElement.outerHTML;
+        const blob = new Blob(['<!DOCTYPE html>\n' + html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const start = originalStartDate.replace(/-/g, '');
+        const end = originalEndDate.replace(/-/g, '');
+        const filename = start === end ? start + '.html' : start + '-' + end + '.html';
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
 </script>
 {{end}}

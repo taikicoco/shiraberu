@@ -8,9 +8,20 @@
     {{template "styles" .}}
 </head>
 <body>
-    <h1>PR Log</h1>
-    <div class="meta">
-        {{.PeriodLabel}} · Org: @{{.Report.Org}} · User: @{{.Report.Username}}
+    <div class="header">
+        <div class="header-content">
+            <h1>PR Log</h1>
+            <div class="meta">
+                {{.PeriodLabel}} · Org: @{{.Report.Org}} · User: @{{.Report.Username}}
+            </div>
+        </div>
+        <button id="downloadBtn" class="download-btn" title="Download HTML">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 12l-4-4h2.5V3h3v5H12L8 12z"/>
+                <path d="M14 13v1H2v-1h12z"/>
+            </svg>
+            Download
+        </button>
     </div>
 
     {{if .Report.Days}}
@@ -118,7 +129,7 @@
         </div>
         <div class="chart-container">
             <div class="chart-header">
-                <div class="chart-title">Repository Activity</div>
+                <div class="chart-title">Merged Repository Activity</div>
             </div>
             <div class="chart-wrapper">
                 <canvas id="repoActivityChart"></canvas>

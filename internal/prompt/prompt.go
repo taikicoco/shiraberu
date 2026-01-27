@@ -83,8 +83,8 @@ func Run(cfg *config.Config, defaultUsername string) (*Options, error) {
 			currentStep = stepFormat
 
 		case stepFormat:
-			formats := []string{"Markdown", "HTML", "HTML (open in browser)", backOption}
-			formatValues := []string{"markdown", "html", "browser"}
+			formats := []string{"HTML (open in browser)", "HTML", "Markdown", backOption}
+			formatValues := []string{"browser", "html", "markdown"}
 			defaultIdx := 0
 			for i, v := range formatValues {
 				if v == cfg.Format {
@@ -117,9 +117,9 @@ func Run(cfg *config.Config, defaultUsername string) (*Options, error) {
 
 func generateFilename(start, end time.Time, ext string) string {
 	if start.Equal(end) {
-		return start.Format("2006-01-02") + ext
+		return start.Format("20060102") + ext
 	}
-	return start.Format("2006-01-02") + "_" + end.Format("2006-01-02") + ext
+	return start.Format("20060102") + "-" + end.Format("20060102") + ext
 }
 
 func promptSingleDay(reader *bufio.Reader) (time.Time, time.Time, bool) {
