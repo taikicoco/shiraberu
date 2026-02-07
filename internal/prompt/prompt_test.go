@@ -137,9 +137,9 @@ func TestRunner_Run_SingleDayBrowser(t *testing.T) {
 	// Flow: org → username → period mode (single day) → select today → confirm → format (browser)
 	mockIO := &MockIO{
 		readLineResponses: []string{
-			"my-org",  // Organization
+			"my-org",   // Organization
 			"testuser", // Username
-			"",        // confirmDateRange (Enter = OK)
+			"",         // confirmDateRange (Enter = OK)
 		},
 		selectResponses: []int{
 			0, // Period type: Single day
@@ -460,11 +460,11 @@ func TestRunner_Run_DateRangeSelectMonth(t *testing.T) {
 func TestRunner_Run_DateRangeEnterDates(t *testing.T) {
 	mockIO := &MockIO{
 		readLineResponses: []string{
-			"my-org",      // Organization
-			"testuser",    // Username
-			"2025-01-01",  // Start date
-			"2025-01-31",  // End date
-			"",            // confirmDateRange (Enter = OK)
+			"my-org",     // Organization
+			"testuser",   // Username
+			"2025-01-01", // Start date
+			"2025-01-31", // End date
+			"",           // confirmDateRange (Enter = OK)
 		},
 		selectResponses: []int{
 			1, // Period type: Date range
