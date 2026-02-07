@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const spinnerUpdateInterval = 80 * time.Millisecond
+
 var frames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 type Spinner struct {
@@ -38,7 +40,7 @@ func (s *Spinner) Start() {
 	s.mu.Unlock()
 
 	go func() {
-		ticker := time.NewTicker(80 * time.Millisecond)
+		ticker := time.NewTicker(spinnerUpdateInterval)
 		defer ticker.Stop()
 
 		i := 0
