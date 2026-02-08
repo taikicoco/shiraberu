@@ -13,7 +13,10 @@ import (
 	"github.com/taikicoco/shiraberu/internal/render"
 )
 
-const DefaultPort = "7777"
+const (
+	DefaultPort      = "7777"
+	browserOpenDelay = 500 * time.Millisecond
+)
 
 // BrowserOpener はブラウザを開く機能を抽象化するインターフェース
 type BrowserOpener interface {
@@ -105,7 +108,7 @@ func (s *Server) ServeWithAddr(report *pr.Report, previousReport *pr.Report, add
 	}
 
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(browserOpenDelay)
 		_ = s.browserOpener.Open("http://localhost" + addr)
 	}()
 

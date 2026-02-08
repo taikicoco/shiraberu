@@ -20,6 +20,75 @@ const (
 	monthsToShow = 12
 )
 
+// IO はユーザー入力を抽象化するインターフェース
+type IO interface {
+	// ReadLine はラベルとデフォルト値を表示し、ユーザーの入力を返す
+	ReadLine(label string, defaultVal string) (string, error)
+	// Select は選択肢を表示し、選択されたインデックスを返す
+	Select(label string, options []string, defaultIdx int) (int, error)
+}
+
+// DefaultIO は標準入出力を使用するIO実装
+type DefaultIO struct {
+	reader *bufio.Reader
+}
+
+// NewDefaultIO は標準入力を使用するDefaultIOを作成する
+func NewDefaultIO() *DefaultIO {
+	return &DefaultIO{reader: bufio.NewReader(os.Stdin)}
+}
+
+// ReadLine はラベルとデフォルト値を表示し、ユーザーの入力を返す
+func (d *DefaultIO) ReadLine(label string, defaultVal string) (string, error) {
+	if defaultVal != "" {
+		fmt.Printf("? %s [%s]: ", label, defaultVal)
+	} else {
+		fmt.Printf("? %s: ", label)
+	}
+
+	input, err := d.reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return defaultVal, err
+	}
+	input = strings.TrimSpace(input)
+
+	if input == "" {
+		return defaultVal, nil
+	}
+	return input, nil
+}
+
+// Select は選択肢を表示し、選択されたインデックスを返す
+func (d *DefaultIO) Select(label string, options []string, defaultIdx int) (int, error) {
+	prompt := promptui.Select{
+		Label:     label,
+		Items:     options,
+		CursorPos: defaultIdx,
+		Templates: &promptui.SelectTemplates{
+			Label:    "? {{ . }}",
+			Active:   "\U0001F449 {{ . | cyan }}",
+			Inactive: "   {{ . }}",
+			Selected: "\U00002705 {{ . | green }}",
+		},
+	}
+
+	idx, _, err := prompt.Run()
+	if err != nil {
+		return defaultIdx, nil
+	}
+	return idx, nil
+}
+
+// Runner はプロンプトの実行を管理する
+type Runner struct {
+	io IO
+}
+
+// NewRunner は指定されたIOを使用するRunnerを作成する
+func NewRunner(io IO) *Runner {
+	return &Runner{io: io}
+}
+
 type Options struct {
 	Org        string
 	Username   string
@@ -41,8 +110,14 @@ const (
 	stepDone
 )
 
+// Run は標準入出力を使用してプロンプトを実行する（後方互換性のため）
 func Run(cfg *config.Config, defaultUsername string) (*Options, error) {
-	reader := bufio.NewReader(os.Stdin)
+	r := NewRunner(NewDefaultIO())
+	return r.Run(cfg, defaultUsername)
+}
+
+// Run はインタラクティブプロンプトを実行してオプションを収集する
+func (r *Runner) Run(cfg *config.Config, defaultUsername string) (*Options, error) {
 	opts := &Options{}
 
 	currentStep := stepOrg
@@ -50,14 +125,14 @@ func Run(cfg *config.Config, defaultUsername string) (*Options, error) {
 	for currentStep != stepDone {
 		switch currentStep {
 		case stepOrg:
-			opts.Org = promptText(reader, "Organization", cfg.Org)
+			opts.Org = r.promptText("Organization", cfg.Org)
 			if opts.Org == "" {
 				return nil, apperrors.ErrOrgRequired
 			}
 			currentStep = stepUsername
 
 		case stepUsername:
-			opts.Username = promptText(reader, "GitHub username", defaultUsername)
+			opts.Username = r.promptText("GitHub username", defaultUsername)
 			if opts.Username == "" {
 				opts.Username = defaultUsername
 			}
@@ -65,17 +140,17 @@ func Run(cfg *config.Config, defaultUsername string) (*Options, error) {
 
 		case stepPeriodMode:
 			modes := []string{"Single day", "Date range", backOption}
-			idx := promptSelect("Period type", modes, 0)
+			idx := r.promptSelect("Period type", modes, 0)
 			if idx == 2 { // Back
 				currentStep = stepUsername
 				continue
 			}
 			var goBack bool
 			if idx == 0 {
-				opts.StartDate, opts.EndDate, goBack = promptSingleDay(reader)
+				opts.StartDate, opts.EndDate, goBack = r.promptSingleDay()
 				opts.PeriodType = period.TypeCustom
 			} else {
-				opts.StartDate, opts.EndDate, opts.PeriodType, goBack = promptDateRange(reader)
+				opts.StartDate, opts.EndDate, opts.PeriodType, goBack = r.promptDateRange()
 			}
 			if goBack {
 				continue // Stay at stepPeriodMode
@@ -92,7 +167,7 @@ func Run(cfg *config.Config, defaultUsername string) (*Options, error) {
 					break
 				}
 			}
-			idx := promptSelect("Output format", formats, defaultIdx)
+			idx := r.promptSelect("Output format", formats, defaultIdx)
 			if idx == 3 { // Back
 				currentStep = stepPeriodMode
 				continue
@@ -122,7 +197,7 @@ func generateFilename(start, end time.Time, ext string) string {
 	return start.Format("20060102") + "-" + end.Format("20060102") + ext
 }
 
-func promptSingleDay(reader *bufio.Reader) (time.Time, time.Time, bool) {
+func (r *Runner) promptSingleDay() (time.Time, time.Time, bool) {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	yesterday := today.AddDate(0, 0, -1)
@@ -133,7 +208,7 @@ func promptSingleDay(reader *bufio.Reader) (time.Time, time.Time, bool) {
 		"Enter date",
 		backOption,
 	}
-	idx := promptSelect("Select date", options, 0)
+	idx := r.promptSelect("Select date", options, 0)
 
 	if idx == 3 { // Back
 		return time.Time{}, time.Time{}, true
@@ -146,13 +221,13 @@ func promptSingleDay(reader *bufio.Reader) (time.Time, time.Time, bool) {
 	case 1:
 		date = yesterday
 	case 2:
-		date = promptDate(reader, "Date (YYYY-MM-DD)", today)
+		date = r.promptDate("Date (YYYY-MM-DD)", today)
 	}
 
 	return date, date, false
 }
 
-func promptDateRange(reader *bufio.Reader) (time.Time, time.Time, period.Type, bool) {
+func (r *Runner) promptDateRange() (time.Time, time.Time, period.Type, bool) {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	weekdays := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
@@ -181,7 +256,7 @@ func promptDateRange(reader *bufio.Reader) (time.Time, time.Time, period.Type, b
 		"Enter dates",
 		backOption,
 	}
-	idx := promptSelect("Select range", options, 0)
+	idx := r.promptSelect("Select range", options, 0)
 
 	if idx == 6 { // Back
 		return time.Time{}, time.Time{}, "", true
@@ -203,20 +278,20 @@ func promptDateRange(reader *bufio.Reader) (time.Time, time.Time, period.Type, b
 		start, end = lastMonthStart, lastMonthEnd
 		periodType = period.TypeMonth
 	case 4: // Select month
-		start, end = promptSelectMonth(today)
+		start, end = r.promptSelectMonth(today)
 		periodType = period.TypeMonth
 	case 5: // Enter dates
-		start = promptDate(reader, "Start date (YYYY-MM-DD)", today.AddDate(0, 0, -7))
-		end = promptDate(reader, "End date (YYYY-MM-DD)", today)
+		start = r.promptDate("Start date (YYYY-MM-DD)", today.AddDate(0, 0, -7))
+		end = r.promptDate("End date (YYYY-MM-DD)", today)
 		periodType = period.TypeCustom
 	}
 
 	// Confirm
-	start, end = confirmDateRange(reader, start, end)
+	start, end = r.confirmDateRange(start, end)
 	return start, end, periodType, false
 }
 
-func promptSelectMonth(today time.Time) (time.Time, time.Time) {
+func (r *Runner) promptSelectMonth(today time.Time) (time.Time, time.Time) {
 	// Generate past months
 	options := make([]string, monthsToShow)
 	months := make([]time.Time, monthsToShow)
@@ -227,7 +302,7 @@ func promptSelectMonth(today time.Time) (time.Time, time.Time) {
 		options[i] = monthStart.Format("2006-01")
 	}
 
-	idx := promptSelect("Select month", options, 0)
+	idx := r.promptSelect("Select month", options, 0)
 
 	start := months[idx]
 	end := start.AddDate(0, 1, -1) // Last day of the month
@@ -235,75 +310,49 @@ func promptSelectMonth(today time.Time) (time.Time, time.Time) {
 	return start, end
 }
 
-func confirmDateRange(reader *bufio.Reader, start, end time.Time) (time.Time, time.Time) {
-	fmt.Printf("\nPeriod: %s - %s\n", start.Format("2006-01-02"), end.Format("2006-01-02"))
-	fmt.Print("? Confirm? [Enter: OK / s: change start / e: change end]: ")
+func (r *Runner) confirmDateRange(start, end time.Time) (time.Time, time.Time) {
+	label := fmt.Sprintf("Period: %s - %s. Confirm? [Enter: OK / s: change start / e: change end]",
+		start.Format("2006-01-02"), end.Format("2006-01-02"))
 
-	input, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		// On error, return current values
+	input, err := r.io.ReadLine(label, "")
+	if err != nil {
 		return start, end
 	}
 	input = strings.TrimSpace(strings.ToLower(input))
 
 	switch input {
 	case "s":
-		start = promptDate(reader, "Start date (YYYY-MM-DD)", start)
-		return confirmDateRange(reader, start, end)
+		start = r.promptDate("Start date (YYYY-MM-DD)", start)
+		return r.confirmDateRange(start, end)
 	case "e":
-		end = promptDate(reader, "End date (YYYY-MM-DD)", end)
-		return confirmDateRange(reader, start, end)
+		end = r.promptDate("End date (YYYY-MM-DD)", end)
+		return r.confirmDateRange(start, end)
 	default:
 		return start, end
 	}
 }
 
-func promptDate(reader *bufio.Reader, label string, defaultDate time.Time) time.Time {
+func (r *Runner) promptDate(label string, defaultDate time.Time) time.Time {
 	defaultStr := defaultDate.Format("2006-01-02")
-	input := promptText(reader, label, defaultStr)
+	input := r.promptText(label, defaultStr)
 
 	parsed, err := time.Parse("2006-01-02", input)
 	if err != nil {
-		fmt.Println("  Invalid date format. Using default.")
 		return defaultDate
 	}
 	return parsed
 }
 
-func promptText(reader *bufio.Reader, label string, defaultVal string) string {
-	if defaultVal != "" {
-		fmt.Printf("? %s [%s]: ", label, defaultVal)
-	} else {
-		fmt.Printf("? %s: ", label)
-	}
-
-	input, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		// On error, return default value
-		return defaultVal
-	}
-	input = strings.TrimSpace(input)
-
-	if input == "" {
+func (r *Runner) promptText(label string, defaultVal string) string {
+	input, err := r.io.ReadLine(label, defaultVal)
+	if err != nil {
 		return defaultVal
 	}
 	return input
 }
 
-func promptSelect(label string, options []string, defaultIdx int) int {
-	prompt := promptui.Select{
-		Label:     label,
-		Items:     options,
-		CursorPos: defaultIdx,
-		Templates: &promptui.SelectTemplates{
-			Label:    "? {{ . }}",
-			Active:   "\U0001F449 {{ . | cyan }}",
-			Inactive: "   {{ . }}",
-			Selected: "\U00002705 {{ . | green }}",
-		},
-	}
-
-	idx, _, err := prompt.Run()
+func (r *Runner) promptSelect(label string, options []string, defaultIdx int) int {
+	idx, err := r.io.Select(label, options, defaultIdx)
 	if err != nil {
 		return defaultIdx
 	}
