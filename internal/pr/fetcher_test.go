@@ -239,6 +239,94 @@ func TestFetcher_Fetch_Error(t *testing.T) {
 	}
 }
 
+func TestSplitDateRange_SingleMonth(t *testing.T) {
+	start := time.Date(2025, 1, 10, 0, 0, 0, 0, timezone.JST)
+	end := time.Date(2025, 1, 25, 23, 59, 59, 0, timezone.JST)
+
+	chunks := splitDateRange(start, end)
+
+	if len(chunks) != 1 {
+		t.Fatalf("len(chunks): got %d, want 1", len(chunks))
+	}
+	if !chunks[0].start.Equal(start) {
+		t.Errorf("start: got %v, want %v", chunks[0].start, start)
+	}
+	if !chunks[0].end.Equal(end) {
+		t.Errorf("end: got %v, want %v", chunks[0].end, end)
+	}
+}
+
+func TestSplitDateRange_MultipleMonths(t *testing.T) {
+	start := time.Date(2025, 4, 1, 0, 0, 0, 0, timezone.JST)
+	end := time.Date(2025, 6, 15, 23, 59, 59, 0, timezone.JST)
+
+	chunks := splitDateRange(start, end)
+
+	if len(chunks) != 3 {
+		t.Fatalf("len(chunks): got %d, want 3", len(chunks))
+	}
+
+	// April chunk: 04-01 ~ 04-30
+	if chunks[0].start.Month() != 4 || chunks[0].start.Day() != 1 {
+		t.Errorf("chunk[0] start: got %v", chunks[0].start)
+	}
+	if chunks[0].end.Month() != 4 || chunks[0].end.Day() != 30 {
+		t.Errorf("chunk[0] end: got %v", chunks[0].end)
+	}
+
+	// May chunk: 05-01 ~ 05-31
+	if chunks[1].start.Month() != 5 || chunks[1].start.Day() != 1 {
+		t.Errorf("chunk[1] start: got %v", chunks[1].start)
+	}
+	if chunks[1].end.Month() != 5 || chunks[1].end.Day() != 31 {
+		t.Errorf("chunk[1] end: got %v", chunks[1].end)
+	}
+
+	// June chunk: 06-01 ~ 06-15
+	if chunks[2].start.Month() != 6 || chunks[2].start.Day() != 1 {
+		t.Errorf("chunk[2] start: got %v", chunks[2].start)
+	}
+	if chunks[2].end.Month() != 6 || chunks[2].end.Day() != 15 {
+		t.Errorf("chunk[2] end: got %v", chunks[2].end)
+	}
+}
+
+func TestSplitDateRange_YearBoundary(t *testing.T) {
+	start := time.Date(2025, 12, 1, 0, 0, 0, 0, timezone.JST)
+	end := time.Date(2026, 1, 31, 23, 59, 59, 0, timezone.JST)
+
+	chunks := splitDateRange(start, end)
+
+	if len(chunks) != 2 {
+		t.Fatalf("len(chunks): got %d, want 2", len(chunks))
+	}
+	if chunks[0].end.Month() != 12 || chunks[0].end.Day() != 31 {
+		t.Errorf("chunk[0] end: got %v", chunks[0].end)
+	}
+	if chunks[1].start.Year() != 2026 || chunks[1].start.Month() != 1 {
+		t.Errorf("chunk[1] start: got %v", chunks[1].start)
+	}
+}
+
+func TestDedup(t *testing.T) {
+	prs := []github.PullRequest{
+		{URL: "https://github.com/test/repo/pull/1", Title: "PR 1"},
+		{URL: "https://github.com/test/repo/pull/2", Title: "PR 2"},
+		{URL: "https://github.com/test/repo/pull/1", Title: "PR 1 dup"},
+	}
+
+	result := dedup(prs)
+	if len(result) != 2 {
+		t.Fatalf("len(result): got %d, want 2", len(result))
+	}
+	if result[0].Title != "PR 1" {
+		t.Errorf("first PR title: got %q, want %q", result[0].Title, "PR 1")
+	}
+	if result[1].Title != "PR 2" {
+		t.Errorf("second PR title: got %q, want %q", result[1].Title, "PR 2")
+	}
+}
+
 var errMock = &mockError{}
 
 type mockError struct{}

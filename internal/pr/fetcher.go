@@ -39,33 +39,71 @@ func NewFetcher(client PRSearcher) *Fetcher {
 	return &Fetcher{client: client}
 }
 
-func (f *Fetcher) Fetch(org, username string, startDate, endDate time.Time) (*Report, error) {
+type dateChunk struct {
+	start time.Time
+	end   time.Time
+}
 
-	// JST timezone for date range
+func splitDateRange(start, end time.Time) []dateChunk {
+	var chunks []dateChunk
+	current := start
+	for current.Before(end) {
+		// End of current month
+		chunkEnd := time.Date(current.Year(), current.Month()+1, 0, 23, 59, 59, 0, current.Location())
+		if chunkEnd.After(end) {
+			chunkEnd = end
+		}
+		chunks = append(chunks, dateChunk{start: current, end: chunkEnd})
+		// Move to first day of next month
+		current = time.Date(chunkEnd.Year(), chunkEnd.Month()+1, 1, 0, 0, 0, 0, chunkEnd.Location())
+	}
+	return chunks
+}
+
+func dedup(prs []github.PullRequest) []github.PullRequest {
+	seen := make(map[string]bool)
+	var result []github.PullRequest
+	for _, pr := range prs {
+		if pr.URL != "" && seen[pr.URL] {
+			continue
+		}
+		seen[pr.URL] = true
+		result = append(result, pr)
+	}
+	return result
+}
+
+func (f *Fetcher) Fetch(org, username string, startDate, endDate time.Time) (*Report, error) {
 	startTime := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, timezone.JST)
 	endTime := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 0, timezone.JST)
 
-	dateRange := startTime.Format(time.RFC3339) + ".." + endTime.Format(time.RFC3339)
+	chunks := splitDateRange(startTime, endTime)
 
-	// Opened PRs
-	openedPRs, err := f.client.SearchPRs(org, "is:pr author:"+username+" is:open", "created:"+dateRange)
-	if err != nil {
-		return nil, err
+	var allOpened, allMerged, allReviewed []github.PullRequest
+
+	for _, chunk := range chunks {
+		dateRange := chunk.start.Format(time.RFC3339) + ".." + chunk.end.Format(time.RFC3339)
+
+		openedPRs, err := f.client.SearchPRs(org, "is:pr author:"+username+" is:open", "created:"+dateRange)
+		if err != nil {
+			return nil, err
+		}
+		allOpened = append(allOpened, openedPRs...)
+
+		mergedPRs, err := f.client.SearchPRs(org, "is:pr author:"+username+" is:merged", "merged:"+dateRange)
+		if err != nil {
+			return nil, err
+		}
+		allMerged = append(allMerged, mergedPRs...)
+
+		reviewedPRs, err := f.client.SearchPRs(org, "is:pr reviewed-by:"+username+" -author:"+username, "updated:"+dateRange)
+		if err != nil {
+			return nil, err
+		}
+		allReviewed = append(allReviewed, reviewedPRs...)
 	}
 
-	// Merged PRs
-	mergedPRs, err := f.client.SearchPRs(org, "is:pr author:"+username+" is:merged", "merged:"+dateRange)
-	if err != nil {
-		return nil, err
-	}
-
-	// Reviewed PRs
-	reviewedPRs, err := f.client.SearchPRs(org, "is:pr reviewed-by:"+username+" -author:"+username, "updated:"+dateRange)
-	if err != nil {
-		return nil, err
-	}
-
-	days := groupByDate(openedPRs, mergedPRs, reviewedPRs)
+	days := groupByDate(dedup(allOpened), dedup(allMerged), dedup(allReviewed))
 
 	return &Report{
 		GeneratedAt: time.Now(),
