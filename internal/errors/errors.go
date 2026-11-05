@@ -10,6 +10,9 @@ var (
 
 	// ErrAPIFailed はGitHub API呼び出しが失敗した場合のエラー
 	ErrAPIFailed = errors.New("GitHub API call failed")
+
+	// ErrTooManyResults は検索結果がGitHubの上限（1,000件）を超えた場合のエラー
+	ErrTooManyResults = errors.New("search results exceed the GitHub limit of 1000")
 )
 
 // Sentinel errors for config
@@ -28,4 +31,13 @@ var (
 
 	// ErrOrgRequired は組織名が必須だが空の場合のエラー
 	ErrOrgRequired = errors.New("organization is required")
+
+	// ErrSinceRequired は対話なしの実行で -since が指定されていない場合のエラー
+	ErrSinceRequired = errors.New("-since is required when running without prompts")
+
+	// ErrInvalidDateRange は開始日が終了日より後の場合のエラー
+	ErrInvalidDateRange = errors.New("-since must not be after -until")
+
+	// ErrUnsupportedFormat は対話なしの実行で扱えない出力形式の場合のエラー
+	ErrUnsupportedFormat = errors.New("unsupported format")
 )
